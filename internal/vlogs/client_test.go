@@ -20,8 +20,12 @@ func TestLogsQLEscapesQuotes(t *testing.T) {
 	if extra["kind"] != "flow" || extra["iface"] != "eth0" {
 		t.Fatalf("%v", extra)
 	}
-	if _, err := rankQuery("flow", "pid"); err == nil {
+	if _, err := rankQuery("flow", "pid", "", ""); err == nil {
 		t.Fatal("非法排行字段应拒绝")
+	}
+	ranked, err := rankQuery("flow", "dst_port", "tcp", "443")
+	if err != nil || !strings.Contains(ranked, `proto:="tcp"`) || !strings.Contains(ranked, "dst_port:*") || !strings.Contains(ranked, "src_port:443") || !strings.Contains(ranked, "stats by (dst_port)") {
+		t.Fatalf("排行 %v %s", err, ranked)
 	}
 	q, extra = (LogFilter{Proto: "icmp", Port: "443"}).logsQL()
 	if extra["proto"] != "icmp" || !strings.Contains(q, "src_port:443") || !strings.Contains(q, "dst_port:443") {

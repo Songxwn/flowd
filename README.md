@@ -29,7 +29,7 @@ environment:
 
 ## 用二进制部署
 
-flowd 装成本机程序，用 systemd 开机自启。VictoriaLogs 二选一：本机二进制，或者只用 Docker 跑 VictoriaLogs。版本与上面的 Compose 一致：VictoriaLogs `v1.53.0`，flowd `v0.1.4`。flowd 支持 `x86_64` 和 `aarch64`。不要执行 `go build`。
+flowd 装成本机程序，用 systemd 开机自启。VictoriaLogs 二选一：本机二进制，或者只用 Docker 跑 VictoriaLogs。版本与上面的 Compose 一致：VictoriaLogs `v1.53.0`，flowd `v0.1.5`。flowd 支持 `x86_64` 和 `aarch64`。不要执行 `go build`。
 
 整套 Compose 和这套二进制不要同时占用 `9428`、`8787`。已经用上一节的 Compose 时，不用再往下做。VictoriaLogs 的两种装法也不要一起占用 `9428`。
 
@@ -170,7 +170,7 @@ sudo docker run -d --name victorialogs --restart unless-stopped \
 ### 3. 安装 flowd
 
 ```bash
-FLOWD_VERSION=v0.1.4
+FLOWD_VERSION=v0.1.5
 case "$(uname -m)" in
   x86_64) ARCH=amd64 ;;
   aarch64|arm64) ARCH=arm64 ;;
@@ -337,9 +337,9 @@ sudo systemctl start victorialogs
 
 ## 网页
 
-- 总览：抓包和写入计数、连接数曲线、域名和应用前几名。
+- 总览：抓包和写入计数、连接数曲线、域名、应用和目标端口前几名。
 - 流日志：按域名、应用、网卡、地址、协议和端口筛选，也可以切到 DNS 查询。
-- 排行：按域名、应用或目标地址，统计连接次数和字节数；也可以改成按 DNS 查询排名。
+- 排行：按域名、应用、目标地址、协议、目标端口或源端口统计连接次数和流量。可以先选 tcp、udp、icmp 和端口，再看这一层的合计与排行。点一行会打开对应的流日志。
 - 设置：选择网卡，按域名后缀、应用名、协议或端口过滤。协议只接受 tcp、udp、icmp。端口匹配源端口或目标端口，只作用于 tcp 和 udp。排除优先于包含。
 
 点排行里的名字会打开对应的流日志。域名来源有三种：`sni` 是 TLS ClientHello 里的服务器名，`http` 是未加密 HTTP 的 Host，`dns` 是本机看到的 DNS 响应。

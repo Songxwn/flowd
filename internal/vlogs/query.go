@@ -53,16 +53,31 @@ func (f LogFilter) logsQL() (string, map[string]string) {
 	return query, extra
 }
 
-func rankQuery(kind, field string) (string, error) {
-	if kind != "dns" {
-		kind = "flow"
-	}
+func rankQuery(kind, field, proto, port string) (string, error) {
 	switch field {
-	case "domain", "app", "dst_ip":
+	case "domain", "app", "dst_ip", "proto", "dst_port", "src_port":
 	default:
 		return "", fmt.Errorf("不支持的排行字段")
 	}
-	return fmt.Sprintf(`kind:="%s" %s:* | stats by (%s) count() as hits, sum(bytes) as total_bytes`, kind, field, field), nil
+	q := scopeQuery(kind, proto, port)
+	if field != "proto" {
+		q += " " + field + ":*"
+	}
+	return q + fmt.Sprintf(" | stats by (%s) count() as hits, sum(bytes) as total_bytes", field), nil
+}
+
+func scopeQuery(kind, proto, port string) string {
+	if kind != "dns" {
+		kind = "flow"
+	}
+	q := fmt.Sprintf(`kind:="%s"`, kind)
+	if proto == "tcp" || proto == "udp" || proto == "icmp" {
+		q += fmt.Sprintf(` proto:="%s"`, proto)
+	}
+	if clause := portFilter(port); clause != "" {
+		q += " " + clause
+	}
+	return q
 }
 
 func portFilter(value string) string {
@@ -197,6 +212,26 @@ func parseRank(body []byte, field string) ([]RankRow, error) {
 		return rows[i].Hits > rows[j].Hits
 	})
 	return rows, nil
+}
+
+func parseTotals(body []byte) (hits, bytes float64, err error) {
+	resp, err := decodeProm(body)
+	if err != nil {
+		return 0, 0, err
+	}
+	for _, item := range resp.Data.Result {
+		_, n, ok := pair(item.Value)
+		if !ok {
+			continue
+		}
+		switch item.Metric["__name__"] {
+		case "hits":
+			hits += n
+		case "total_bytes":
+			bytes += n
+		}
+	}
+	return hits, bytes, nil
 }
 
 func parseSeries(body []byte) ([]Point, error) {

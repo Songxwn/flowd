@@ -132,7 +132,7 @@ function rankList(title, rows, field, kind) {
 }
 
 function openFilter(field, key, kind) {
-  const map = { domain: "f-domain", app: "f-app", dst_ip: "f-dst" };
+  const map = { domain: "f-domain", app: "f-app", dst_ip: "f-dst", proto: "f-proto", dst_port: "f-port", src_port: "f-port" };
   const id = map[field];
   if (id) document.getElementById(id).value = key;
   if (kind) document.getElementById("f-kind").value = kind;
@@ -185,11 +185,13 @@ async function loadOverview() {
   let series = { points: [] };
   let domains = { rows: [] };
   let apps = { rows: [] };
+  let ports = { rows: [] };
   try {
-    [series, domains, apps] = await Promise.all([
+    [series, domains, apps, ports] = await Promise.all([
       api("/api/series?range=" + state.range),
       api("/api/rank?by=domain&kind=flow&range=" + state.range + "&limit=8"),
       api("/api/rank?by=app&kind=flow&range=" + state.range + "&limit=8"),
+      api("/api/rank?by=dst_port&kind=flow&range=" + state.range + "&limit=8"),
     ]);
   } catch (err) {
     onErr(err);
@@ -197,6 +199,7 @@ async function loadOverview() {
   document.getElementById("chartcard").replaceChildren(el("h2", null, "连接数"), chart(series.points || []));
   document.getElementById("topdomains").replaceChildren(rankList("域名", domains.rows || [], "domain", "flow"));
   document.getElementById("topapps").replaceChildren(rankList("应用", apps.rows || [], "app", "flow"));
+  document.getElementById("topports").replaceChildren(rankList("目标端口", ports.rows || [], "dst_port", "flow"));
 }
 
 async function loadFlows() {
@@ -228,16 +231,24 @@ async function loadFlows() {
 }
 
 function rankTitle() {
-  const name = { domain: "域名", app: "应用", dst_ip: "目标地址" }[state.rankBy] || "排行";
+  const name = { domain: "域名", app: "应用", dst_ip: "目标地址", proto: "协议", dst_port: "目标端口", src_port: "源端口" }[state.rankBy] || "排行";
   return name + (state.rankKind === "dns" ? " · DNS" : " · 连接");
 }
 
 async function loadRank() {
-  const [st, data] = await Promise.all([
-    api("/api/status"),
-    api("/api/rank?by=" + encodeURIComponent(state.rankBy) + "&kind=" + encodeURIComponent(state.rankKind) + "&range=" + state.range + "&limit=30"),
-  ]);
+  const params = new URLSearchParams();
+  params.set("by", state.rankBy);
+  params.set("kind", state.rankKind);
+  params.set("range", state.range);
+  params.set("limit", "30");
+  const proto = document.getElementById("r-proto").value;
+  const port = document.getElementById("r-port").value.trim();
+  if (proto) params.set("proto", proto);
+  if (port) params.set("port", port);
+  const [st, data] = await Promise.all([api("/api/status"), api("/api/rank?" + params.toString())]);
   paintStatus(st);
+  const sum = document.getElementById("ranksum");
+  sum.textContent = "当前范围 " + Math.round(Number(data.hits) || 0) + " 条，流量 " + fmtBytes(data.bytes);
   document.getElementById("rankbody").replaceChildren(rankList(rankTitle(), data.rows || [], state.rankBy, state.rankKind));
 }
 
@@ -385,6 +396,10 @@ document.getElementById("rankkind").addEventListener("click", (event) => {
   state.rankKind = button.dataset.kind;
   mark("rankkind", "kind", state.rankKind);
   if (state.tab === "rank") refresh();
+});
+document.getElementById("rankform").addEventListener("submit", (event) => {
+  event.preventDefault();
+  loadRank().catch(onErr);
 });
 document.getElementById("flowform").addEventListener("submit", (event) => {
   event.preventDefault();

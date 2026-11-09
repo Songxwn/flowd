@@ -59,7 +59,7 @@ header { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-
 .subtabs, .filters { margin-bottom: 10px; }
 .grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
-.cols { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 10px; margin-top: 10px; }
+.cols { display: grid; grid-template-columns: 1.3fr 1fr 1fr 1fr; gap: 10px; margin-top: 10px; }
 .card .k { color: var(--muted); font-size: 12px; }
 .card .v { font-size: 22px; font-variant-numeric: tabular-nums; margin-top: 4px; }
 h2 { margin: 0 0 10px; font-size: 15px; font-weight: 650; }

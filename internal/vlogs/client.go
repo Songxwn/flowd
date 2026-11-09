@@ -200,8 +200,8 @@ func (c *Client) Logs(ctx context.Context, f LogFilter, start, end time.Time) ([
 	return out, nil
 }
 
-func (c *Client) Rank(ctx context.Context, kind, field string, start, end time.Time, limit int) ([]RankRow, error) {
-	q, err := rankQuery(kind, field)
+func (c *Client) Rank(ctx context.Context, kind, field, proto, port string, start, end time.Time, limit int) ([]RankRow, error) {
+	q, err := rankQuery(kind, field, proto, port)
 	if err != nil {
 		return nil, err
 	}
@@ -220,6 +220,15 @@ func (c *Client) Rank(ctx context.Context, kind, field string, start, end time.T
 		rows = rows[:limit]
 	}
 	return rows, nil
+}
+
+func (c *Client) Totals(ctx context.Context, kind, proto, port string, start, end time.Time) (float64, float64, error) {
+	q := scopeQuery(kind, proto, port) + " | stats count() as hits, sum(bytes) as total_bytes"
+	body, err := c.post(ctx, "/select/logsql/stats_query", q, nil, start, end, "")
+	if err != nil {
+		return 0, 0, err
+	}
+	return parseTotals(body)
 }
 
 func (c *Client) Series(ctx context.Context, start, end time.Time, step string) ([]Point, error) {

@@ -359,7 +359,19 @@ func (s *Server) rank(w http.ResponseWriter, r *http.Request) {
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	ctx, cancel := contextTimeout(45 * time.Second)
 	defer cancel()
-	rows, err := s.logs.Rank(ctx, r.URL.Query().Get("kind"), r.URL.Query().Get("by"), start, end, limit)
+	kind := r.URL.Query().Get("kind")
+	proto := r.URL.Query().Get("proto")
+	port := r.URL.Query().Get("port")
+	rows, err := s.logs.Rank(ctx, kind, r.URL.Query().Get("by"), proto, port, start, end, limit)
+	if err != nil {
+		code := http.StatusBadGateway
+		if strings.Contains(err.Error(), "不支持") {
+			code = http.StatusBadRequest
+		}
+		writeJSON(w, code, map[string]string{"error": err.Error()})
+		return
+	}
+	hits, bytes, err := s.logs.Totals(ctx, kind, proto, port, start, end)
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 		return
@@ -367,7 +379,7 @@ func (s *Server) rank(w http.ResponseWriter, r *http.Request) {
 	if rows == nil {
 		rows = []vlogs.RankRow{}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"rows": rows})
+	writeJSON(w, http.StatusOK, map[string]any{"rows": rows, "hits": hits, "bytes": bytes})
 }
 
 func (s *Server) series(w http.ResponseWriter, r *http.Request) {

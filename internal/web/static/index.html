@@ -50,6 +50,7 @@
           <div class="card" id="chartcard"></div>
           <div class="card" id="topdomains"></div>
           <div class="card" id="topapps"></div>
+          <div class="card" id="topports"></div>
         </div>
       </section>
 
@@ -83,11 +84,25 @@
           <button type="button" data-by="domain" class="on">域名</button>
           <button type="button" data-by="app">应用</button>
           <button type="button" data-by="dst_ip">目标地址</button>
+          <button type="button" data-by="proto">协议</button>
+          <button type="button" data-by="dst_port">目标端口</button>
+          <button type="button" data-by="src_port">源端口</button>
         </div>
         <div class="subtabs" id="rankkind">
           <button type="button" data-kind="flow" class="on">按连接</button>
           <button type="button" data-kind="dns">按 DNS</button>
         </div>
+        <form id="rankform" class="filters">
+          <select id="r-proto">
+            <option value="">全部协议</option>
+            <option value="tcp">tcp</option>
+            <option value="udp">udp</option>
+            <option value="icmp">icmp</option>
+          </select>
+          <input id="r-port" inputmode="numeric" placeholder="端口，源或目标">
+          <button class="primary" type="submit">分析</button>
+        </form>
+        <p id="ranksum" class="muted"></p>
         <div class="card" id="rankbody"></div>
       </section>
 
