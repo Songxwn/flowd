@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>flowd</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect fill='%23101311' width='16' height='16'/%3E%3Cpath d='M2 11 L6 5 L10 9 L14 3' fill='none' stroke='%23d6f25c' stroke-width='1.6'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <div id="login" class="login hidden">
+    <form id="loginForm">
+      <h2>输入口令</h2>
+      <p class="muted">这个实例设置了访问口令。</p>
+      <input id="loginToken" type="password" autocomplete="current-password" required>
+      <button class="primary" type="submit">进入</button>
+      <p id="loginErr" class="notice err"></p>
+    </form>
+  </div>
+  <div class="app">
+    <aside>
+      <div class="brand">flowd</div>
+      <button class="nav on" type="button" data-tab="overview">总览</button>
+      <button class="nav" type="button" data-tab="flows">流日志</button>
+      <button class="nav" type="button" data-tab="rank">排行</button>
+      <button class="nav" type="button" data-tab="settings">设置</button>
+      <div class="aside-foot muted" id="ver"></div>
+    </aside>
+    <main>
+      <header>
+        <strong id="hostname"></strong>
+        <div class="ranges" id="ranges">
+          <button type="button" data-range="15m">15 分钟</button>
+          <button type="button" data-range="1h" class="on">1 小时</button>
+          <button type="button" data-range="6h">6 小时</button>
+          <button type="button" data-range="24h">24 小时</button>
+          <button type="button" data-range="7d">7 天</button>
+        </div>
+        <span id="vlstate" class="pill">VictoriaLogs</span>
+        <label class="auto"><input id="auto" type="checkbox" checked> 自动刷新</label>
+        <button id="reload" type="button">刷新</button>
+      </header>
+      <div id="notice" class="notice"></div>
+      <div id="banner" class="banner hidden"></div>
+
+      <section id="overview">
+        <div class="grid" id="cards"></div>
+        <div class="cols">
+          <div class="card" id="chartcard"></div>
+          <div class="card" id="topdomains"></div>
+          <div class="card" id="topapps"></div>
+        </div>
+      </section>
+
+      <section id="flows" class="hidden">
+        <form id="flowform" class="filters">
+          <input id="f-domain" placeholder="域名包含">
+          <input id="f-app" placeholder="应用包含">
+          <input id="f-iface" placeholder="网卡">
+          <input id="f-src" placeholder="源 IP">
+          <input id="f-dst" placeholder="目标 IP">
+          <select id="f-proto">
+            <option value="">协议</option>
+            <option value="tcp">tcp</option>
+            <option value="udp">udp</option>
+          </select>
+          <select id="f-kind">
+            <option value="flow">连接</option>
+            <option value="dns">DNS</option>
+            <option value="">全部</option>
+          </select>
+          <input id="f-q" placeholder="全文">
+          <button class="primary" type="submit">查询</button>
+        </form>
+        <div id="flowtable"></div>
+      </section>
+
+      <section id="rank" class="hidden">
+        <div class="subtabs" id="rankby">
+          <button type="button" data-by="domain" class="on">域名</button>
+          <button type="button" data-by="app">应用</button>
+          <button type="button" data-by="dst_ip">目标地址</button>
+        </div>
+        <div class="subtabs" id="rankkind">
+          <button type="button" data-kind="flow" class="on">按连接</button>
+          <button type="button" data-kind="dns">按 DNS</button>
+        </div>
+        <div class="card" id="rankbody"></div>
+      </section>
+
+      <section id="settings" class="hidden">
+        <form id="settingsForm" class="card form">
+          <p class="muted">勾选网卡并保存后立即开始采集。监听地址保存后要重启进程才生效。域名按后缀匹配，<code>example.com</code> 会包含 <code>a.example.com</code>。应用名按不区分大小写的包含匹配。</p>
+          <div id="ifaces"></div>
+          <div class="formgrid">
+            <label>监听地址<input id="listen" autocomplete="off"></label>
+            <label>VictoriaLogs<input id="vlurl" autocomplete="off"></label>
+            <label>只保留这些域名<textarea id="incDom" placeholder="一行一个，留空表示全部"></textarea></label>
+            <label>排除这些域名<textarea id="excDom" placeholder="一行一个"></textarea></label>
+            <label>只保留这些应用<textarea id="incApp" placeholder="一行一个，留空表示全部"></textarea></label>
+            <label>排除这些应用<textarea id="excApp" placeholder="一行一个"></textarea></label>
+          </div>
+          <label class="check"><input id="proc" type="checkbox"> 关联本机进程名</label>
+          <label>新口令<input id="token" type="password" autocomplete="new-password"></label>
+          <p id="tokenHint" class="muted"></p>
+          <label class="check"><input id="clearToken" type="checkbox"> 清除口令</label>
+          <button class="primary" type="submit">保存并应用</button>
+        </form>
+      </section>
+    </main>
+  </div>
+  <script src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,36 @@
+name: flowd
+
+services:
+  victorialogs:
+    image: docker.io/victoriametrics/victoria-logs:v1.53.0
+    restart: unless-stopped
+    command:
+      - -storageDataPath=/victoria-logs-data
+      - -retentionPeriod=30d
+      - -httpListenAddr=:9428
+    ports:
+      - "127.0.0.1:9428:9428"
+    volumes:
+      - vl-data:/victoria-logs-data
+
+  flowd:
+    image: ghcr.io/songxwn/flowd:latest
+    restart: unless-stopped
+    depends_on:
+      - victorialogs
+    network_mode: host
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+    pid: host
+    environment:
+      FLOWD_CONFIG: /var/lib/flowd/config.yaml
+      FLOWD_LISTEN: 127.0.0.1:8787
+      FLOWD_VL_URL: http://127.0.0.1:9428
+      FLOWD_PROC_ROOT: /proc
+    volumes:
+      - flowd-data:/var/lib/flowd
+
+volumes:
+  vl-data:
+  flowd-data:
