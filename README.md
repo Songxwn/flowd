@@ -32,7 +32,7 @@ environment:
 从 [Releases](https://github.com/Songxwn/flowd/releases) 下载对应系统的 `flowd`。Linux 上需要 root，或者给程序 `CAP_NET_RAW` 和 `CAP_NET_ADMIN`。
 
 ```bash
-sudo ./flowd_v0.1.0_linux_amd64 -config /etc/flowd/config.yaml
+sudo ./flowd_v0.1.1_linux_amd64 -config /etc/flowd/config.yaml
 ```
 
 配置示例是 `config.example.yaml`。用 systemd 时可以参考 `deploy/flowd.service`。VictoriaLogs 需要另外运行，地址用 `victorialogs.url` 或环境变量 `FLOWD_VL_URL`。
