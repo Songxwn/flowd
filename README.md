@@ -29,25 +29,35 @@ environment:
 
 ## 用二进制部署
 
-下面在同一台 Linux 上安装 VictoriaLogs 和 flowd，并用 systemd 开机自启。版本与 Compose 一致：VictoriaLogs `v1.53.0`，flowd `v0.1.2`。支持 `x86_64` 和 `aarch64`。不要执行 `go build`。
+flowd 装成本机程序，用 systemd 开机自启。VictoriaLogs 二选一：本机二进制，或者只用 Docker 跑 VictoriaLogs。版本与上面的 Compose 一致：VictoriaLogs `v1.53.0`，flowd `v0.1.2`。flowd 支持 `x86_64` 和 `aarch64`。不要执行 `go build`。
 
-Compose 和这套二进制不要同时占用 `9428`、`8787`。已经用 Compose 时，继续用上一节即可。
+整套 Compose 和这套二进制不要同时占用 `9428`、`8787`。已经用上一节的 Compose 时，不用再往下做。VictoriaLogs 的两种装法也不要一起占用 `9428`。
 
-### 1. 准备账号和目录
+### 1. 准备目录
 
-VictoriaLogs 用单独的系统账号写数据。flowd 抓包需要 root，服务单元里已经写成 `User=root`。
+```bash
+sudo mkdir -p /etc/flowd /usr/local/bin
+```
+
+选本机二进制安装 VictoriaLogs 时，再给它单独的系统账号。只用 Docker 跑 VictoriaLogs 时跳过这一段。
 
 ```bash
 if ! id victorialogs >/dev/null 2>&1; then
   sudo useradd --system --home-dir /var/lib/victoria-logs --shell /usr/sbin/nologin victorialogs
 fi
-sudo mkdir -p /var/lib/victoria-logs /etc/flowd /usr/local/bin
+sudo mkdir -p /var/lib/victoria-logs
 sudo chown victorialogs:victorialogs /var/lib/victoria-logs
 ```
 
+flowd 抓包需要 root，服务单元里已经写成 `User=root`。
+
 ### 2. 安装 VictoriaLogs
 
-它是单个可执行文件，解压后的名字是 `victoria-logs-prod`。装到固定路径 `/usr/local/bin/victoria-logs`，以后换版本只替换这个文件。数据放在 `/var/lib/victoria-logs`，保留 30 天，只监听本机 `127.0.0.1:9428`。
+两种都只对本机开放 `127.0.0.1:9428`，日志保留 30 天。flowd 里的地址都写 `http://127.0.0.1:9428`。
+
+#### 选项 A：本机二进制
+
+它是单个可执行文件，解压后的名字是 `victoria-logs-prod`。装到固定路径 `/usr/local/bin/victoria-logs`，以后换版本只替换这个文件。数据放在 `/var/lib/victoria-logs`。
 
 ```bash
 VL_VERSION=v1.53.0
@@ -101,6 +111,62 @@ echo
 
 如果起不来，先看 `sudo journalctl -u victorialogs -n 80 --no-pager`。常见原因是 `9428` 已被占用，或 `/var/lib/victoria-logs` 不属于 `victorialogs`。
 
+#### 选项 B：只用 Docker 跑 VictoriaLogs
+
+本机已安装 Docker 时，可以不装 VictoriaLogs 二进制。容器里的进程监听 `:9428`，发布到宿主机时只绑定 `127.0.0.1:9428`。数据在 Docker 卷 `vl-data` 里。仓库里的副本是 `deploy/victorialogs-compose.yml`。
+
+写入 `/etc/flowd/victorialogs-compose.yml`：
+
+```yaml
+name: flowd-vlogs
+
+services:
+  victorialogs:
+    image: docker.io/victoriametrics/victoria-logs:v1.53.0
+    container_name: victorialogs
+    restart: unless-stopped
+    command:
+      - -storageDataPath=/victoria-logs-data
+      - -retentionPeriod=30d
+      - -httpListenAddr=:9428
+    ports:
+      - "127.0.0.1:9428:9428"
+    volumes:
+      - vl-data:/victoria-logs-data
+
+volumes:
+  vl-data:
+```
+
+```bash
+sudo docker compose -f /etc/flowd/victorialogs-compose.yml pull
+sudo docker compose -f /etc/flowd/victorialogs-compose.yml up -d
+sudo docker compose -f /etc/flowd/victorialogs-compose.yml ps
+curl -fsS http://127.0.0.1:9428/health
+echo
+```
+
+`restart: unless-stopped` 会在 Docker 守护进程起来后把容器拉起来。本机浏览器打开 <http://127.0.0.1:9428> 是 VictoriaLogs 自己的查询页。flowd 的网页仍是后面的 `8787`。
+
+起不来时看容器日志。`9428` 已被占用，或镜像没拉下来，是常见原因。
+
+```bash
+sudo docker logs victorialogs
+```
+
+没有 Compose 插件时，用这一条等效命令：
+
+```bash
+sudo docker volume create flowd-vl-data
+sudo docker run -d --name victorialogs --restart unless-stopped \
+  -p 127.0.0.1:9428:9428 \
+  -v flowd-vl-data:/victoria-logs-data \
+  docker.io/victoriametrics/victoria-logs:v1.53.0 \
+  -storageDataPath=/victoria-logs-data \
+  -retentionPeriod=30d \
+  -httpListenAddr=:9428
+```
+
 ### 3. 安装 flowd
 
 ```bash
@@ -146,7 +212,7 @@ filter:
 sudo chmod 600 /etc/flowd/config.yaml
 ```
 
-写入 `/etc/systemd/system/flowd.service`（仓库里的副本是 `deploy/flowd.service`）。它排在 VictoriaLogs 之后启动：
+写入 `/etc/systemd/system/flowd.service`（仓库里的副本是 `deploy/flowd.service`）。VictoriaLogs 用本机二进制时，它排在 `victorialogs.service` 之后启动。VictoriaLogs 用 Docker 时，把下面的 `After=` 改成 `After=network-online.target docker.service`，先确认 `curl http://127.0.0.1:9428/health` 成功，再启动 flowd。
 
 ```ini
 [Unit]
@@ -195,7 +261,7 @@ sudo /usr/local/bin/flowd -config /etc/flowd/config.yaml
 kind:="flow"
 ```
 
-flowd 总览里的写入计数会增加。计数不增加时，先看 flowd 日志里的 VictoriaLogs 地址是不是 `http://127.0.0.1:9428`，再确认 `systemctl is-active victorialogs` 为 `active`。
+flowd 总览里的写入计数会增加。计数不增加时，先看 flowd 日志里的 VictoriaLogs 地址是不是 `http://127.0.0.1:9428`。本机二进制用 `systemctl is-active victorialogs`，Docker 用 `sudo docker ps --filter name=victorialogs`。两边都再执行一次 `curl -fsS http://127.0.0.1:9428/health`。
 
 ### 5. 给别的机器打开网页
 
@@ -230,7 +296,9 @@ ssh -L 9428:127.0.0.1:9428 user@那台Linux
 
 ### 6. 保留期限、磁盘和升级
 
-保留期限由 VictoriaLogs 的 `-retentionPeriod=30d` 决定。要改成 7 天或 90 天，编辑 `victorialogs.service` 里的这个参数，然后：
+保留期限由 VictoriaLogs 的 `-retentionPeriod=30d` 决定。
+
+本机二进制要改成 7 天或 90 天时，编辑 `victorialogs.service` 里的这个参数，然后：
 
 ```bash
 sudo systemctl daemon-reload
@@ -239,13 +307,24 @@ sudo systemctl restart victorialogs
 
 数据在 `/var/lib/victoria-logs`。升级或重装时不要删除这个目录，否则已有日志会丢。
 
-升级时停掉对应服务，换掉 `/usr/local/bin` 里的文件，再启动。flowd 仍从 [Releases](https://github.com/Songxwn/flowd/releases) 下载。VictoriaLogs 换版本时，压缩包名里的版本号要和 `VL_VERSION` 一致，例如 `victoria-logs-linux-amd64-v1.53.0.tar.gz`。
+Docker 部署时改 `/etc/flowd/victorialogs-compose.yml` 里的 `-retentionPeriod` 或镜像标签，然后重新创建容器。不要执行 `docker volume rm`，卷 `vl-data` 里是已有日志。用 `docker run` 时对应的卷名是 `flowd-vl-data`。
+
+```bash
+sudo docker compose -f /etc/flowd/victorialogs-compose.yml pull
+sudo docker compose -f /etc/flowd/victorialogs-compose.yml up -d
+```
+
+升级 flowd 时仍从 [Releases](https://github.com/Songxwn/flowd/releases) 下载，换掉程序再启动：
 
 ```bash
 sudo systemctl stop flowd
 sudo install -m 0755 新下载的flowd /usr/local/bin/flowd
 sudo systemctl start flowd
+```
 
+VictoriaLogs 本机二进制换版本时，压缩包名里的版本号要和 `VL_VERSION` 一致，例如 `victoria-logs-linux-amd64-v1.53.0.tar.gz`。
+
+```bash
 sudo systemctl stop victorialogs
 sudo install -m 0755 解压出的victoria-logs-prod /usr/local/bin/victoria-logs
 sudo systemctl start victorialogs
