@@ -94,7 +94,14 @@ func TestTenantID(t *testing.T) {
 	if err := os.WriteFile(path, []byte("victorialogs:\n  id: 0:0\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	cfg, err := Load(path)
+	if err != nil || cfg.VictoriaLogs.ID != "0:0" {
+		t.Fatalf("未加引号的 0:0 应可用: %v %s", err, cfg.VictoriaLogs.ID)
+	}
+	if err := os.WriteFile(path, []byte("victorialogs:\n  id: 12\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := Load(path); err == nil || !strings.Contains(err.Error(), "引号") {
-		t.Fatalf("未加引号的 0:0 应失败: %v", err)
+		t.Fatalf("纯数字 ID 应失败: %v", err)
 	}
 }

@@ -218,7 +218,7 @@ sudo systemctl restart flowd
 sudo FLOWD_VL_URL=http://127.0.0.1:9428 FLOWD_VL_ID=0:0 /usr/local/bin/flowd -config /etc/flowd/config.yaml
 ```
 
-`FLOWD_LISTEN`、`FLOWD_TOKEN`、`FLOWD_HOSTNAME` 同样有效。`FLOWD_VL_ID` 是 VictoriaLogs 的租户，格式为 `账号:项目`，默认 `0:0`。写入和查询都会带上对应的 `AccountID` 和 `ProjectID`。网页设置里也可以改，保存后立即生效。不要设置 `FLOWD_IFACES`，它会在每次启动时盖过网页里保存的网卡。
+`FLOWD_LISTEN`、`FLOWD_TOKEN`、`FLOWD_HOSTNAME` 同样有效。`FLOWD_VL_ID` 是 VictoriaLogs 的租户，格式为 `账号:项目`，默认 `0:0`。配置里写成 `id: "0:0"` 或 `id: 0:0` 都可以。写入和查询都会带上对应的 `AccountID` 和 `ProjectID`。网页设置里也可以改，保存后立即生效。不要设置 `FLOWD_IFACES`，它会在每次启动时盖过网页里保存的网卡。
 
 Windows 或 macOS 上的 flowd 不能抓包，只能连到已经在跑的 VictoriaLogs。Linux 上的 `9428` 没有对网卡开放时，用隧道：
 
