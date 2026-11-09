@@ -5,6 +5,8 @@ import (
 	"log"
 	"net"
 	"net/netip"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -88,9 +90,13 @@ type Service struct {
 	exportEvery  time.Duration
 	procOn       bool
 	procRoot     string
-	procEvery    time.Duration
-	dropped      atomic.Uint64
-	lastProcErr  string
+	procEvery     time.Duration
+	dropped       atomic.Uint64
+	excludeOwnWeb bool
+	webPort       uint16
+	webIP         netip.Addr
+	webAny        bool
+	lastProcErr   string
 	startedLoops bool
 }
 
@@ -109,15 +115,19 @@ func New(out chan<- model.Record, host string) *Service {
 		idle:        30 * time.Second,
 		exportEvery: 15 * time.Second,
 		procEvery:   2 * time.Second,
-		procRoot:    "/proc",
-		procOn:      true,
+		procRoot:       "/proc",
+		procOn:         true,
+		excludeOwnWeb:  true,
 	}
 }
 
 // Start 启动后台汇聚，并按配置开始采集。
 func (s *Service) Start(ctx context.Context, cfg config.Config) {
+	s.refreshLocals()
 	s.mu.Lock()
 	s.ctx = ctx
+	s.setWebLocked(cfg.Listen)
+	s.excludeOwnWeb = cfg.Capture.HideOwnWeb()
 	startLoops := !s.startedLoops
 	s.startedLoops = true
 	s.mu.Unlock()
@@ -143,6 +153,7 @@ func (s *Service) Update(cfg config.Config) {
 		return
 	}
 	s.filter = filter.New(cfg.Filter.IncludeDomains, cfg.Filter.ExcludeDomains, cfg.Filter.IncludeApps, cfg.Filter.ExcludeApps, cfg.Filter.IncludeProtos, cfg.Filter.ExcludeProtos, cfg.Filter.IncludePorts, cfg.Filter.ExcludePorts)
+	s.excludeOwnWeb = cfg.Capture.HideOwnWeb()
 	s.idle = cfg.Capture.IdleTimeout
 	s.exportEvery = cfg.Capture.ExportInterval
 	if s.idle < 5*time.Second {
@@ -284,6 +295,9 @@ func (s *Service) Observe(iface string, frame []byte, now time.Time) []model.Rec
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.skipOwnWeb(fr.Src, fr.Dst, fr.SrcPort, fr.DstPort) {
+		return nil
+	}
 	if isDNS(fr) {
 		msg, ok := parse.ParseDNS(payload, fr.Proto)
 		if !ok {
@@ -474,7 +488,7 @@ func (s *Service) FlushAll(now time.Time) []model.Record {
 }
 
 func (s *Service) snapshot(st *flowState, now time.Time, closed bool) (model.Record, bool) {
-	if st.packets == 0 {
+	if st.packets == 0 || s.skipOwnWeb(st.src, st.dst, st.sp, st.dp) {
 		return model.Record{}, false
 	}
 	s.attach(st, now)
@@ -525,6 +539,52 @@ func (s *Service) lookupApp(proto string, src netip.Addr, sp uint16, dst netip.A
 		return "", 0
 	}
 	return info.App, info.PID
+}
+
+func (s *Service) setWebLocked(listen string) {
+	host, portText, err := net.SplitHostPort(strings.TrimSpace(listen))
+	if err != nil {
+		return
+	}
+	port, err := strconv.ParseUint(portText, 10, 16)
+	if err != nil || port == 0 {
+		return
+	}
+	s.webPort = uint16(port)
+	if host == "" {
+		s.webAny = true
+		return
+	}
+	ip, err := netip.ParseAddr(host)
+	if err != nil || !ip.IsValid() || ip.Unmap().IsUnspecified() {
+		s.webAny = true
+		s.webIP = netip.Addr{}
+		return
+	}
+	s.webAny = false
+	s.webIP = ip.Unmap()
+}
+
+func (s *Service) skipOwnWeb(src, dst netip.Addr, sp, dp uint16) bool {
+	if !s.excludeOwnWeb || s.webPort == 0 {
+		return false
+	}
+	if sp == s.webPort && s.webSide(src) {
+		return true
+	}
+	return dp == s.webPort && s.webSide(dst)
+}
+
+func (s *Service) webSide(ip netip.Addr) bool {
+	ip = ip.Unmap()
+	if !s.webAny {
+		return ip == s.webIP
+	}
+	if ip.IsLoopback() {
+		return true
+	}
+	_, ok := s.locals[ip]
+	return ok
 }
 
 func (s *Service) bothLocal(a, b netip.Addr) bool {

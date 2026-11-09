@@ -8,6 +8,7 @@ capture:
   ifaces: []
   idle_timeout: 30s
   export_interval: 15s
+  exclude_own_web: true
 proc:
   enabled: true
   root: /proc

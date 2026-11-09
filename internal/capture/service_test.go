@@ -49,6 +49,29 @@ func TestObserveSNIAndDNS(t *testing.T) {
 	}
 }
 
+func TestSkipOwnWeb(t *testing.T) {
+	s := New(make(chan model.Record, 1), "h")
+	s.setWebLocked("127.0.0.1:8787")
+	if !s.skipOwnWeb(netip.MustParseAddr("10.0.0.8"), netip.MustParseAddr("127.0.0.1"), 50000, 8787) {
+		t.Fatal("应排除访问本机网页")
+	}
+	if s.skipOwnWeb(netip.MustParseAddr("10.0.0.8"), netip.MustParseAddr("1.2.3.4"), 50000, 8787) {
+		t.Fatal("不应排除其他主机的同端口")
+	}
+	s.setWebLocked("0.0.0.0:8787")
+	s.locals[netip.MustParseAddr("10.1.1.8")] = struct{}{}
+	if !s.skipOwnWeb(netip.MustParseAddr("8.8.8.8"), netip.MustParseAddr("10.1.1.8"), 40000, 8787) {
+		t.Fatal("监听所有地址时应排除本机地址")
+	}
+	if s.skipOwnWeb(netip.MustParseAddr("8.8.8.8"), netip.MustParseAddr("9.9.9.9"), 40000, 8787) {
+		t.Fatal("非本机地址不应排除")
+	}
+	s.excludeOwnWeb = false
+	if s.skipOwnWeb(netip.MustParseAddr("8.8.8.8"), netip.MustParseAddr("10.1.1.8"), 40000, 8787) {
+		t.Fatal("关闭后不应排除")
+	}
+}
+
 func dnsResponse(name string, ip [4]byte, ttl uint32) []byte {
 	q := dnsQuery(name)
 	q[2] = 0x81

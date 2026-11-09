@@ -29,7 +29,7 @@ environment:
 
 ## 用二进制部署
 
-flowd 装成本机程序，用 systemd 开机自启。VictoriaLogs 二选一：本机二进制，或者只用 Docker 跑 VictoriaLogs。版本与上面的 Compose 一致：VictoriaLogs `v1.53.0`，flowd `v0.1.3`。flowd 支持 `x86_64` 和 `aarch64`。不要执行 `go build`。
+flowd 装成本机程序，用 systemd 开机自启。VictoriaLogs 二选一：本机二进制，或者只用 Docker 跑 VictoriaLogs。版本与上面的 Compose 一致：VictoriaLogs `v1.53.0`，flowd `v0.1.4`。flowd 支持 `x86_64` 和 `aarch64`。不要执行 `go build`。
 
 整套 Compose 和这套二进制不要同时占用 `9428`、`8787`。已经用上一节的 Compose 时，不用再往下做。VictoriaLogs 的两种装法也不要一起占用 `9428`。
 
@@ -170,7 +170,7 @@ sudo docker run -d --name victorialogs --restart unless-stopped \
 ### 3. 安装 flowd
 
 ```bash
-FLOWD_VERSION=v0.1.3
+FLOWD_VERSION=v0.1.4
 case "$(uname -m)" in
   x86_64) ARCH=amd64 ;;
   aarch64|arm64) ARCH=arm64 ;;
@@ -197,6 +197,7 @@ capture:
   ifaces: []
   idle_timeout: 30s
   export_interval: 15s
+  exclude_own_web: true
 proc:
   enabled: true
   root: /proc
@@ -347,7 +348,7 @@ sudo systemctl start victorialogs
 
 每条连接在空闲约 30 秒、结束，或持续超过 15 秒时写成一条日志。DNS 查询单独记一条。长连接会按导出间隔分成多条。
 
-不保存数据包内容，也不解密 TLS。HTTP/3 往往看不到 SNI，域名来自更早的 DNS 响应。走了加密 DNS 时，这一跳对不上。只统计经过所选网卡的本机收发，不打开混杂模式，不会把同网段其他主机的流量收进来。
+不保存数据包内容，也不解密 TLS。HTTP/3 往往看不到 SNI，域名来自更早的 DNS 响应。走了加密 DNS 时，这一跳对不上。只统计经过所选网卡的本机收发，不打开混杂模式，不会把同网段其他主机的流量收进来。默认不记录访问 flowd 自己网页的连接：监听在具体地址上时只排除该地址和端口，监听 `0.0.0.0` 或 `::` 时排除本机所有地址上的这个端口。其它主机上的同端口仍会记录。设置里可以关掉这项。改监听地址后要重启，排除才跟着新端口走。
 
 过滤示例：排除域名填 `example.com` 会去掉它和所有子域名。不要只填 `com` 这种过短后缀。排除端口 `853` 会去掉源端口或目标端口是 853 的 TCP、UDP。只保留端口 `443` 时，其它 TCP、UDP 不记录，ICMP 仍由协议列表决定。ICMP 和 ICMPv6 都记为 `icmp`，没有端口号。
 

@@ -30,6 +30,9 @@ func TestLoadMissingUsesDefaults(t *testing.T) {
 	if !cfg.Proc.On() {
 		t.Fatal("进程关联默认开启")
 	}
+	if !cfg.Capture.HideOwnWeb() {
+		t.Fatal("默认应排除本机网页")
+	}
 }
 
 func TestEnvOverridesFile(t *testing.T) {

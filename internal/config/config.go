@@ -51,6 +51,11 @@ type Capture struct {
 	Ifaces         []string      `yaml:"ifaces"`
 	IdleTimeout    time.Duration `yaml:"idle_timeout"`
 	ExportInterval time.Duration `yaml:"export_interval"`
+	ExcludeOwnWeb  *bool         `yaml:"exclude_own_web"`
+}
+
+func (c Capture) HideOwnWeb() bool {
+	return c.ExcludeOwnWeb == nil || *c.ExcludeOwnWeb
 }
 
 type Proc struct {

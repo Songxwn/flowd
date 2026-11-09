@@ -258,6 +258,7 @@ function fillForm(cfg) {
   document.getElementById("incPort").value = (cfg.include_ports || []).join("\n");
   document.getElementById("excPort").value = (cfg.exclude_ports || []).join("\n");
   document.getElementById("proc").checked = !!cfg.proc_enabled;
+  document.getElementById("ownweb").checked = cfg.exclude_own_web !== false;
   document.getElementById("token").value = "";
   document.getElementById("clearToken").checked = false;
   document.getElementById("tokenHint").textContent = cfg.token_set ? "已设置口令。留空表示不修改。" : "当前没有口令。";
@@ -319,6 +320,7 @@ async function saveConfig(event) {
       include_ports: lines("incPort"),
       exclude_ports: lines("excPort"),
       proc_enabled: document.getElementById("proc").checked,
+      exclude_own_web: document.getElementById("ownweb").checked,
       token: document.getElementById("token").value,
       clear_token: document.getElementById("clearToken").checked,
     }),

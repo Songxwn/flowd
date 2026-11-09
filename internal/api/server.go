@@ -236,6 +236,7 @@ func (s *Server) getConfig(w http.ResponseWriter, r *http.Request) {
 		"include_ports":    cfg.Filter.IncludePorts,
 		"exclude_ports":    cfg.Filter.ExcludePorts,
 		"proc_enabled":     cfg.Proc.On(),
+		"exclude_own_web":  cfg.Capture.HideOwnWeb(),
 		"token_set":        cfg.Token != "",
 		"idle_timeout":     cfg.Capture.IdleTimeout.String(),
 		"export_interval":  cfg.Capture.ExportInterval.String(),
@@ -258,6 +259,7 @@ func (s *Server) putConfig(w http.ResponseWriter, r *http.Request) {
 		IncludePorts    []string `json:"include_ports"`
 		ExcludePorts    []string `json:"exclude_ports"`
 		ProcEnabled     *bool    `json:"proc_enabled"`
+		ExcludeOwnWeb   *bool    `json:"exclude_own_web"`
 		Token           string   `json:"token"`
 		ClearToken      bool     `json:"clear_token"`
 	}
@@ -288,6 +290,9 @@ func (s *Server) putConfig(w http.ResponseWriter, r *http.Request) {
 	cfg.Filter.ExcludePorts = config.CleanPorts(in.ExcludePorts)
 	if in.ProcEnabled != nil {
 		cfg.Proc.Enabled = in.ProcEnabled
+	}
+	if in.ExcludeOwnWeb != nil {
+		cfg.Capture.ExcludeOwnWeb = in.ExcludeOwnWeb
 	}
 	if in.ClearToken {
 		cfg.Token = ""
