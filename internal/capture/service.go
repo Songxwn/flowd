@@ -142,7 +142,7 @@ func (s *Service) Update(cfg config.Config) {
 	if s.ctx == nil {
 		return
 	}
-	s.filter = filter.New(cfg.Filter.IncludeDomains, cfg.Filter.ExcludeDomains, cfg.Filter.IncludeApps, cfg.Filter.ExcludeApps)
+	s.filter = filter.New(cfg.Filter.IncludeDomains, cfg.Filter.ExcludeDomains, cfg.Filter.IncludeApps, cfg.Filter.ExcludeApps, cfg.Filter.IncludeProtos, cfg.Filter.ExcludeProtos, cfg.Filter.IncludePorts, cfg.Filter.ExcludePorts)
 	s.idle = cfg.Capture.IdleTimeout
 	s.exportEvery = cfg.Capture.ExportInterval
 	if s.idle < 5*time.Second {
@@ -290,9 +290,15 @@ func (s *Service) Observe(iface string, frame []byte, now time.Time) []model.Rec
 			return nil
 		}
 		s.rememberDNS(msg, now)
+		if !s.filter.AllowL4(fr.Proto, fr.SrcPort, fr.DstPort) {
+			return nil
+		}
 		if rec, ok := s.dnsRecord(iface, fr, msg, now); ok {
 			return []model.Record{rec}
 		}
+		return nil
+	}
+	if !s.filter.AllowL4(fr.Proto, fr.SrcPort, fr.DstPort) {
 		return nil
 	}
 	if fr.Dst.IsMulticast() || fr.Src.IsMulticast() || s.bothLocal(fr.Src, fr.Dst) {
@@ -353,7 +359,7 @@ func (s *Service) dnsRecord(iface string, fr parse.Frame, msg parse.DNSMessage, 
 		SrcIP: src.String(), SrcPort: sp, DstIP: dst.String(), DstPort: dp,
 		Domain: msg.Name, DomainFrom: "dns", App: app, PID: pid,
 	}
-	if !s.filter.Allow(rec.Domain, rec.App) {
+	if !s.filter.AllowL4(fr.Proto, sp, dp) || !s.filter.Allow(rec.Domain, rec.App) {
 		return model.Record{}, false
 	}
 	rec.Finish()
@@ -472,7 +478,7 @@ func (s *Service) snapshot(st *flowState, now time.Time, closed bool) (model.Rec
 		return model.Record{}, false
 	}
 	s.attach(st, now)
-	if !s.filter.Allow(st.domain, st.app) {
+	if !s.filter.AllowL4(st.proto, st.sp, st.dp) || !s.filter.Allow(st.domain, st.app) {
 		return model.Record{}, false
 	}
 	dur := st.last.Sub(st.first).Milliseconds()

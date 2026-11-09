@@ -17,3 +17,7 @@ filter:
   exclude_domains: []
   include_apps: []
   exclude_apps: []
+  include_protos: []
+  exclude_protos: []
+  include_ports: []
+  exclude_ports: []

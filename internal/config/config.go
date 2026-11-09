@@ -68,6 +68,10 @@ type Filter struct {
 	ExcludeDomains []string `yaml:"exclude_domains"`
 	IncludeApps    []string `yaml:"include_apps"`
 	ExcludeApps    []string `yaml:"exclude_apps"`
+	IncludeProtos  []string `yaml:"include_protos"`
+	ExcludeProtos  []string `yaml:"exclude_protos"`
+	IncludePorts   []uint16 `yaml:"include_ports"`
+	ExcludePorts   []uint16 `yaml:"exclude_ports"`
 }
 
 var validIface = regexp.MustCompile(`^[A-Za-z0-9_.:-]{1,15}$`)
@@ -188,6 +192,10 @@ func (c *Config) Normalize() {
 	c.Filter.ExcludeDomains = CleanDomains(c.Filter.ExcludeDomains)
 	c.Filter.IncludeApps = CleanApps(c.Filter.IncludeApps)
 	c.Filter.ExcludeApps = CleanApps(c.Filter.ExcludeApps)
+	c.Filter.IncludeProtos = CleanProtos(c.Filter.IncludeProtos)
+	c.Filter.ExcludeProtos = CleanProtos(c.Filter.ExcludeProtos)
+	c.Filter.IncludePorts = cleanPorts(c.Filter.IncludePorts)
+	c.Filter.ExcludePorts = cleanPorts(c.Filter.ExcludePorts)
 	c.Token = strings.TrimSpace(c.Token)
 }
 
@@ -258,6 +266,57 @@ func CleanApps(in []string) []string {
 		}
 		return s, true
 	}, 200)
+}
+
+func CleanProtos(in []string) []string {
+	return unique(in, func(s string) (string, bool) {
+		switch strings.ToLower(strings.TrimSpace(s)) {
+		case "tcp", "udp", "icmp":
+			return strings.ToLower(strings.TrimSpace(s)), true
+		case "icmp6", "icmpv6":
+			return "icmp", true
+		default:
+			return "", false
+		}
+	}, 3)
+}
+
+func CleanPorts(in []string) []uint16 {
+	var nums []uint16
+	for _, item := range in {
+		for _, part := range strings.FieldsFunc(item, func(r rune) bool {
+			return r == ',' || r == ';' || r == ' ' || r == '\n' || r == '\t'
+		}) {
+			n, err := strconv.ParseUint(part, 10, 16)
+			if err != nil || n == 0 {
+				continue
+			}
+			nums = append(nums, uint16(n))
+		}
+	}
+	return cleanPorts(nums)
+}
+
+func cleanPorts(in []uint16) []uint16 {
+	if in == nil {
+		return []uint16{}
+	}
+	out := make([]uint16, 0, len(in))
+	seen := map[uint16]struct{}{}
+	for _, port := range in {
+		if port == 0 {
+			continue
+		}
+		if _, ok := seen[port]; ok {
+			continue
+		}
+		seen[port] = struct{}{}
+		out = append(out, port)
+		if len(out) >= 200 {
+			break
+		}
+	}
+	return out
 }
 
 func unique(in []string, norm func(string) (string, bool), max int) []string {

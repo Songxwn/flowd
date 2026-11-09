@@ -6,8 +6,8 @@ import (
 	"golang.org/x/net/bpf"
 )
 
-func TestTCPUDPFilter(t *testing.T) {
-	raw, err := tcpUDPFilter()
+func TestCaptureFilter(t *testing.T) {
+	raw, err := captureFilter()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -26,11 +26,11 @@ func TestTCPUDPFilter(t *testing.T) {
 	}{
 		{"ipv4 tcp", pkt(0x0800, 23, 6), true},
 		{"ipv4 udp", pkt(0x0800, 23, 17), true},
-		{"ipv4 icmp", pkt(0x0800, 23, 1), false},
+		{"ipv4 icmp", pkt(0x0800, 23, 1), true},
 		{"arp", pkt(0x0806, 23, 6), false},
 		{"ipv6 tcp", pkt(0x86dd, 20, 6), true},
 		{"ipv6 udp", pkt(0x86dd, 20, 17), true},
-		{"ipv6 icmp", pkt(0x86dd, 20, 58), false},
+		{"ipv6 icmp", pkt(0x86dd, 20, 58), true},
 	}
 	for _, tc := range cases {
 		n, err := vm.Run(tc.pkt)

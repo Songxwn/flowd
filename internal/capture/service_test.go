@@ -42,7 +42,7 @@ func TestObserveSNIAndDNS(t *testing.T) {
 		t.Fatalf("dns 关联 %+v", got)
 	}
 
-	s.filter = filter.New(nil, []string{"example.com"}, nil, nil)
+	s.filter = filter.New(nil, []string{"example.com"}, nil, nil, nil, nil, nil, nil)
 	s.Observe("eth0", plain, now)
 	if got = s.ExportDue(now.Add(2 * time.Minute)); len(got) != 0 {
 		t.Fatalf("排除后仍导出 %+v", got)

@@ -151,6 +151,7 @@ type LogFilter struct {
 	App    string
 	Iface  string
 	Proto  string
+	Port   string
 	SrcIP  string
 	DstIP  string
 	Text   string

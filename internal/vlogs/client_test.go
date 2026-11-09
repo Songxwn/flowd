@@ -23,6 +23,10 @@ func TestLogsQLEscapesQuotes(t *testing.T) {
 	if _, err := rankQuery("flow", "pid"); err == nil {
 		t.Fatal("非法排行字段应拒绝")
 	}
+	q, extra := (LogFilter{Proto: "icmp", Port: "443"}).logsQL()
+	if extra["proto"] != "icmp" || !strings.Contains(q, "src_port:443") || !strings.Contains(q, "dst_port:443") {
+		t.Fatalf("query %s extra %v", q, extra)
+	}
 }
 
 func TestParseRankAndSeries(t *testing.T) {

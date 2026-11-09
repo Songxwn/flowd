@@ -104,6 +104,22 @@ func clientHello(serverName string) []byte {
 	return append(rec, hs...)
 }
 
+func TestParseICMP(t *testing.T) {
+	buf := make([]byte, 14+20+8)
+	buf[12], buf[13] = 0x08, 0x00
+	ip := buf[14:]
+	ip[0] = 0x45
+	ip[2], ip[3] = 0, 28
+	ip[9] = 1
+	ip[12], ip[15] = 10, 1
+	ip[16], ip[19] = 1, 1
+	ip[20] = 8
+	fr, ok := ParseFrame(buf)
+	if !ok || fr.Proto != "icmp" || fr.SrcPort != 0 || fr.DstPort != 0 {
+		t.Fatalf("%v %+v", ok, fr)
+	}
+}
+
 func dnsQuery(name string) []byte {
 	h := make([]byte, 12)
 	h[5] = 1

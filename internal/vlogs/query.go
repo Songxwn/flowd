@@ -24,6 +24,9 @@ func (f LogFilter) logsQL() (string, map[string]string) {
 	if clause := phrase(f.Text); clause != "" {
 		parts = append(parts, clause)
 	}
+	if clause := portFilter(f.Port); clause != "" {
+		parts = append(parts, clause)
+	}
 	query := "*"
 	if len(parts) > 0 {
 		query = strings.Join(parts, " ")
@@ -35,7 +38,7 @@ func (f LogFilter) logsQL() (string, map[string]string) {
 	if ifaceName.MatchString(f.Iface) {
 		extra["iface"] = f.Iface
 	}
-	if f.Proto == "tcp" || f.Proto == "udp" {
+	if f.Proto == "tcp" || f.Proto == "udp" || f.Proto == "icmp" {
 		extra["proto"] = f.Proto
 	}
 	if ipOK(f.SrcIP) {
@@ -60,6 +63,18 @@ func rankQuery(kind, field string) (string, error) {
 		return "", fmt.Errorf("不支持的排行字段")
 	}
 	return fmt.Sprintf(`kind:="%s" %s:* | stats by (%s) count() as hits, sum(bytes) as total_bytes`, kind, field, field), nil
+}
+
+func portFilter(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	n, err := strconv.ParseUint(value, 10, 16)
+	if err != nil || n == 0 {
+		return ""
+	}
+	return fmt.Sprintf("(src_port:%d OR dst_port:%d)", n, n)
 }
 
 func containsFilter(field, value string) string {

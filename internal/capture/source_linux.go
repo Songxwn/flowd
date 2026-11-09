@@ -28,7 +28,7 @@ func Open(iface string) (PacketSource, error) {
 		}
 		return nil, err
 	}
-	raw, err := tcpUDPFilter()
+	raw, err := captureFilter()
 	if err != nil {
 		h.Close()
 		return nil, err

@@ -209,6 +209,7 @@ async function loadFlows() {
     ["dst_ip", "f-dst"],
     ["src_ip", "f-src"],
     ["proto", "f-proto"],
+    ["port", "f-port"],
     ["kind", "f-kind"],
     ["q", "f-q"],
   ]) {
@@ -252,6 +253,10 @@ function fillForm(cfg) {
   document.getElementById("excDom").value = (cfg.exclude_domains || []).join("\n");
   document.getElementById("incApp").value = (cfg.include_apps || []).join("\n");
   document.getElementById("excApp").value = (cfg.exclude_apps || []).join("\n");
+  document.getElementById("incProto").value = (cfg.include_protos || []).join("\n");
+  document.getElementById("excProto").value = (cfg.exclude_protos || []).join("\n");
+  document.getElementById("incPort").value = (cfg.include_ports || []).join("\n");
+  document.getElementById("excPort").value = (cfg.exclude_ports || []).join("\n");
   document.getElementById("proc").checked = !!cfg.proc_enabled;
   document.getElementById("token").value = "";
   document.getElementById("clearToken").checked = false;
@@ -309,6 +314,10 @@ async function saveConfig(event) {
       exclude_domains: lines("excDom"),
       include_apps: lines("incApp"),
       exclude_apps: lines("excApp"),
+      include_protos: lines("incProto"),
+      exclude_protos: lines("excProto"),
+      include_ports: lines("incPort"),
+      exclude_ports: lines("excPort"),
       proc_enabled: document.getElementById("proc").checked,
       token: document.getElementById("token").value,
       clear_token: document.getElementById("clearToken").checked,

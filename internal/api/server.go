@@ -231,6 +231,10 @@ func (s *Server) getConfig(w http.ResponseWriter, r *http.Request) {
 		"exclude_domains":  cfg.Filter.ExcludeDomains,
 		"include_apps":     cfg.Filter.IncludeApps,
 		"exclude_apps":     cfg.Filter.ExcludeApps,
+		"include_protos":   cfg.Filter.IncludeProtos,
+		"exclude_protos":   cfg.Filter.ExcludeProtos,
+		"include_ports":    cfg.Filter.IncludePorts,
+		"exclude_ports":    cfg.Filter.ExcludePorts,
 		"proc_enabled":     cfg.Proc.On(),
 		"token_set":        cfg.Token != "",
 		"idle_timeout":     cfg.Capture.IdleTimeout.String(),
@@ -249,6 +253,10 @@ func (s *Server) putConfig(w http.ResponseWriter, r *http.Request) {
 		ExcludeDomains  []string `json:"exclude_domains"`
 		IncludeApps     []string `json:"include_apps"`
 		ExcludeApps     []string `json:"exclude_apps"`
+		IncludeProtos   []string `json:"include_protos"`
+		ExcludeProtos   []string `json:"exclude_protos"`
+		IncludePorts    []string `json:"include_ports"`
+		ExcludePorts    []string `json:"exclude_ports"`
 		ProcEnabled     *bool    `json:"proc_enabled"`
 		Token           string   `json:"token"`
 		ClearToken      bool     `json:"clear_token"`
@@ -274,6 +282,10 @@ func (s *Server) putConfig(w http.ResponseWriter, r *http.Request) {
 	cfg.Filter.ExcludeDomains = in.ExcludeDomains
 	cfg.Filter.IncludeApps = in.IncludeApps
 	cfg.Filter.ExcludeApps = in.ExcludeApps
+	cfg.Filter.IncludeProtos = in.IncludeProtos
+	cfg.Filter.ExcludeProtos = in.ExcludeProtos
+	cfg.Filter.IncludePorts = config.CleanPorts(in.IncludePorts)
+	cfg.Filter.ExcludePorts = config.CleanPorts(in.ExcludePorts)
 	if in.ProcEnabled != nil {
 		cfg.Proc.Enabled = in.ProcEnabled
 	}
@@ -317,6 +329,7 @@ func (s *Server) flows(w http.ResponseWriter, r *http.Request) {
 		App:    r.URL.Query().Get("app"),
 		Iface:  r.URL.Query().Get("iface"),
 		Proto:  r.URL.Query().Get("proto"),
+		Port:   r.URL.Query().Get("port"),
 		SrcIP:  r.URL.Query().Get("src_ip"),
 		DstIP:  r.URL.Query().Get("dst_ip"),
 		Text:   r.URL.Query().Get("q"),

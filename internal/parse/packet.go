@@ -2,7 +2,7 @@ package parse
 
 import "net/netip"
 
-// Frame 是从以太网帧里取出的一条 TCP 或 UDP 数据。
+// Frame 是从以太网帧里取出的一条 TCP、UDP 或 ICMP。
 type Frame struct {
 	Proto   string
 	Src     netip.Addr
@@ -14,7 +14,7 @@ type Frame struct {
 	Bytes   int
 }
 
-// ParseFrame 解析单层 VLAN、IPv4/IPv6 和 TCP/UDP。其它协议返回 false。
+// ParseFrame 解析单层 VLAN、IPv4/IPv6、TCP/UDP 和 ICMP。其它协议返回 false。
 func ParseFrame(frame []byte) (Frame, bool) {
 	if len(frame) < 14 {
 		return Frame{}, false
@@ -86,7 +86,7 @@ func parseIPv6(pkt []byte) (Frame, bool) {
 	off := 40
 	for i := 0; i < 6; i++ {
 		switch next {
-		case 6, 17:
+		case 6, 17, 1, 58:
 			return parseL4(pkt[off:], next, src.Unmap(), dst.Unmap(), total)
 		case 0, 43, 60:
 			if off+2 > len(pkt) {
@@ -140,6 +140,11 @@ func parseL4(pkt []byte, proto int, src, dst netip.Addr, wire int) (Frame, bool)
 		fr.SrcPort = uint16(pkt[0])<<8 | uint16(pkt[1])
 		fr.DstPort = uint16(pkt[2])<<8 | uint16(pkt[3])
 		fr.Payload = pkt[8:]
+	case 1, 58:
+		if len(pkt) < 8 {
+			return Frame{}, false
+		}
+		fr.Proto = "icmp"
 	default:
 		return Frame{}, false
 	}

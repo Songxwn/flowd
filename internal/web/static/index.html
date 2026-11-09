@@ -64,7 +64,9 @@
             <option value="">协议</option>
             <option value="tcp">tcp</option>
             <option value="udp">udp</option>
+            <option value="icmp">icmp</option>
           </select>
+          <input id="f-port" inputmode="numeric" placeholder="端口">
           <select id="f-kind">
             <option value="flow">连接</option>
             <option value="dns">DNS</option>
@@ -91,7 +93,7 @@
 
       <section id="settings" class="hidden">
         <form id="settingsForm" class="card form">
-          <p class="muted">勾选网卡并保存后立即开始采集。监听地址保存后要重启进程才生效。VictoriaLogs 租户写成账号:项目，默认 0:0，保存后立即用于写入和查询。域名按后缀匹配，<code>example.com</code> 会包含 <code>a.example.com</code>。应用名按不区分大小写的包含匹配。</p>
+          <p class="muted">勾选网卡并保存后立即开始采集。监听地址保存后要重启进程才生效。VictoriaLogs 租户写成账号:项目，默认 0:0，保存后立即用于写入和查询。域名按后缀匹配，<code>example.com</code> 会包含 <code>a.example.com</code>。应用名按不区分大小写的包含匹配。协议只填 tcp、udp、icmp。端口只作用于 tcp 和 udp，源端口或目标端口命中即算；icmp 只按协议过滤。排除优先于包含，留空表示不限制。</p>
           <div id="ifaces"></div>
           <div class="formgrid">
             <label>监听地址<input id="listen" autocomplete="off"></label>
@@ -101,6 +103,10 @@
             <label>排除这些域名<textarea id="excDom" placeholder="一行一个"></textarea></label>
             <label>只保留这些应用<textarea id="incApp" placeholder="一行一个，留空表示全部"></textarea></label>
             <label>排除这些应用<textarea id="excApp" placeholder="一行一个"></textarea></label>
+            <label>只保留这些协议<textarea id="incProto" placeholder="tcp、udp、icmp，留空表示全部"></textarea></label>
+            <label>排除这些协议<textarea id="excProto" placeholder="一行一个"></textarea></label>
+            <label>只保留这些端口<textarea id="incPort" placeholder="一行一个，如 443"></textarea></label>
+            <label>排除这些端口<textarea id="excPort" placeholder="一行一个"></textarea></label>
           </div>
           <label class="check"><input id="proc" type="checkbox"> 关联本机进程名</label>
           <label>新口令<input id="token" type="password" autocomplete="new-password"></label>

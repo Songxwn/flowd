@@ -62,7 +62,11 @@ func (r Record) message() string {
 		return b.String()
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "flow %s %s:%d -> %s:%d", r.Proto, r.SrcIP, r.SrcPort, r.DstIP, r.DstPort)
+	if r.Proto == "icmp" {
+		fmt.Fprintf(&b, "flow icmp %s -> %s", r.SrcIP, r.DstIP)
+	} else {
+		fmt.Fprintf(&b, "flow %s %s:%d -> %s:%d", r.Proto, r.SrcIP, r.SrcPort, r.DstIP, r.DstPort)
+	}
 	if r.Domain != "" {
 		fmt.Fprintf(&b, " domain=%s", r.Domain)
 	}
