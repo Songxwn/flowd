@@ -55,6 +55,18 @@ func TestParseRankAndSeries(t *testing.T) {
 	if len(points) != 2 || points[0].T != 1700000000000 || points[0].Hits != 2 || points[0].Bytes != 10 || points[1].Hits != 4 {
 		t.Fatalf("%+v", points)
 	}
+	grouped, err := parseGrouped([]byte(`{"status":"success","data":{"resultType":"matrix","result":[
+		{"metric":{"__name__":"hits","proto":"udp"},"values":[[1700000000,"1"]]},
+		{"metric":{"__name__":"total_bytes","proto":"tcp"},"values":[[1700000000,"20"]]},
+		{"metric":{"__name__":"hits","proto":"tcp"},"values":[[1700000000,"3"]]}
+	]}}`), "proto")
+	if err != nil || len(grouped) != 2 || grouped[0].Name != "tcp" || grouped[0].Points[0].Hits != 3 || grouped[0].Points[0].Bytes != 20 || grouped[1].Points[0].Hits != 1 {
+		t.Fatalf("%+v %v", grouped, err)
+	}
+	q, err := seriesQuery("flow", "tcp", "", "proto")
+	if err != nil || !strings.Contains(q, `proto:="tcp"`) || !strings.Contains(q, "stats by (proto)") {
+		t.Fatalf("曲线 %v %s", err, q)
+	}
 }
 
 func TestInsert(t *testing.T) {

@@ -22,6 +22,7 @@
     <aside>
       <div class="brand">flowd</div>
       <button class="nav on" type="button" data-tab="overview">总览</button>
+      <button class="nav" type="button" data-tab="analyze">分析</button>
       <button class="nav" type="button" data-tab="flows">流日志</button>
       <button class="nav" type="button" data-tab="rank">排行</button>
       <button class="nav" type="button" data-tab="settings">设置</button>
@@ -51,6 +52,24 @@
           <div class="card" id="topdomains"></div>
           <div class="card" id="topapps"></div>
           <div class="card" id="topports"></div>
+        </div>
+      </section>
+
+      <section id="analyze" class="hidden">
+        <div class="subtabs" id="metric">
+          <button type="button" data-metric="bytes" class="on">按流量</button>
+          <button type="button" data-metric="hits">按连接</button>
+        </div>
+        <p id="analyzesum" class="muted"></p>
+        <div class="viz">
+          <div class="card" id="trend"></div>
+          <div class="card" id="protoshare"></div>
+        </div>
+        <div class="cols boards">
+          <div class="card" id="board-domain"></div>
+          <div class="card" id="board-app"></div>
+          <div class="card" id="board-port"></div>
+          <div class="card" id="board-ip"></div>
         </div>
       </section>
 

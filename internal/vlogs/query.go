@@ -66,6 +66,17 @@ func rankQuery(kind, field, proto, port string) (string, error) {
 	return q + fmt.Sprintf(" | stats by (%s) count() as hits, sum(bytes) as total_bytes", field), nil
 }
 
+func seriesQuery(kind, proto, port, by string) (string, error) {
+	if by != "" && by != "proto" {
+		return "", fmt.Errorf("不支持的曲线分组")
+	}
+	q := scopeQuery(kind, proto, port)
+	if by == "" {
+		return q + " | stats count() as hits, sum(bytes) as total_bytes", nil
+	}
+	return q + " | stats by (" + by + ") count() as hits, sum(bytes) as total_bytes", nil
+}
+
 func scopeQuery(kind, proto, port string) string {
 	if kind != "dns" {
 		kind = "flow"
@@ -232,6 +243,77 @@ func parseTotals(body []byte) (hits, bytes float64, err error) {
 		}
 	}
 	return hits, bytes, nil
+}
+
+// SeriesSet 是一条已按名字分开的时间序列。
+type SeriesSet struct {
+	Name   string  `json:"name"`
+	Points []Point `json:"points"`
+}
+
+func parseGrouped(body []byte, field string) ([]SeriesSet, error) {
+	resp, err := decodeProm(body)
+	if err != nil {
+		return nil, err
+	}
+	type slot struct {
+		hits  float64
+		bytes float64
+	}
+	groups := map[string]map[int64]*slot{}
+	var names []string
+	var times []int64
+	seenName := map[string]struct{}{}
+	seenTime := map[int64]struct{}{}
+	for _, item := range resp.Data.Result {
+		name := item.Metric[field]
+		if name == "" {
+			continue
+		}
+		if _, ok := seenName[name]; !ok {
+			seenName[name] = struct{}{}
+			names = append(names, name)
+			groups[name] = map[int64]*slot{}
+		}
+		for _, raw := range item.Values {
+			ts, n, ok := pair(raw)
+			if !ok {
+				continue
+			}
+			if _, ok := seenTime[ts]; !ok {
+				seenTime[ts] = struct{}{}
+				times = append(times, ts)
+			}
+			cell := groups[name][ts]
+			if cell == nil {
+				cell = &slot{}
+				groups[name][ts] = cell
+			}
+			switch item.Metric["__name__"] {
+			case "hits":
+				cell.hits = n
+			case "total_bytes":
+				cell.bytes = n
+			}
+		}
+	}
+	sort.Slice(times, func(i, j int) bool { return times[i] < times[j] })
+	sort.Strings(names)
+	out := make([]SeriesSet, 0, len(names))
+	for _, name := range names {
+		points := make([]Point, 0, len(times))
+		for _, ts := range times {
+			cell := groups[name][ts]
+			p := Point{T: ts}
+			if cell != nil {
+				p.Hits = cell.hits
+				p.Bytes = cell.bytes
+			}
+			points = append(points, p)
+		}
+		out = append(out, SeriesSet{Name: name, Points: points})
+	}
+	return out, nil
 }
 
 func parseSeries(body []byte) ([]Point, error) {

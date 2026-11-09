@@ -231,13 +231,26 @@ func (c *Client) Totals(ctx context.Context, kind, proto, port string, start, en
 	return parseTotals(body)
 }
 
-func (c *Client) Series(ctx context.Context, start, end time.Time, step string) ([]Point, error) {
-	const q = `kind:="flow" | stats count() as hits, sum(bytes) as total_bytes`
+func (c *Client) Series(ctx context.Context, kind, proto, port, by string, start, end time.Time, step string) ([]SeriesSet, error) {
+	q, err := seriesQuery(kind, proto, port, by)
+	if err != nil {
+		return nil, err
+	}
 	body, err := c.post(ctx, "/select/logsql/stats_query_range", q, nil, start, end, step)
 	if err != nil {
 		return nil, err
 	}
-	return parseSeries(body)
+	if by == "" {
+		points, err := parseSeries(body)
+		if err != nil {
+			return nil, err
+		}
+		if points == nil {
+			points = []Point{}
+		}
+		return []SeriesSet{{Name: "all", Points: points}}, nil
+	}
+	return parseGrouped(body, by)
 }
 
 func (c *Client) post(ctx context.Context, path, query string, extra map[string]string, start, end time.Time, step string) ([]byte, error) {

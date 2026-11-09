@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -390,15 +391,45 @@ func (s *Server) series(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := contextTimeout(45 * time.Second)
 	defer cancel()
-	points, err := s.logs.Series(ctx, start, end, step)
+	by := r.URL.Query().Get("by")
+	kind := r.URL.Query().Get("kind")
+	list, err := s.logs.Series(ctx, kind, r.URL.Query().Get("proto"), r.URL.Query().Get("port"), by, start, end, step)
 	if err != nil {
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		code := http.StatusBadGateway
+		if strings.Contains(err.Error(), "不支持") {
+			code = http.StatusBadRequest
+		}
+		writeJSON(w, code, map[string]string{"error": err.Error()})
 		return
 	}
-	if points == nil {
-		points = []vlogs.Point{}
+	if list == nil {
+		list = []vlogs.SeriesSet{}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"points": points})
+	writeJSON(w, http.StatusOK, map[string]any{"points": flattenSeries(list), "series": list})
+}
+
+func flattenSeries(list []vlogs.SeriesSet) []vlogs.Point {
+	byT := map[int64]*vlogs.Point{}
+	var order []int64
+	for _, series := range list {
+		for _, point := range series.Points {
+			got := byT[point.T]
+			if got == nil {
+				copy := point
+				byT[point.T] = &copy
+				order = append(order, point.T)
+				continue
+			}
+			got.Hits += point.Hits
+			got.Bytes += point.Bytes
+		}
+	}
+	sort.Slice(order, func(i, j int) bool { return order[i] < order[j] })
+	out := make([]vlogs.Point, 0, len(order))
+	for _, ts := range order {
+		out = append(out, *byT[ts])
+	}
+	return out
 }
 
 func (s *Server) window(r *http.Request) (time.Time, time.Time, string, error) {

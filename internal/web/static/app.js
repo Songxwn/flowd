@@ -1,4 +1,5 @@
-const state = { tab: "overview", range: "1h", rankBy: "domain", rankKind: "flow", settingsLoaded: false };
+const state = { tab: "overview", range: "1h", rankBy: "domain", rankKind: "flow", metric: "bytes", settingsLoaded: false };
+let analyzeCache = null;
 let busy = false;
 
 function el(tag, attrs, text) {
@@ -84,26 +85,208 @@ function card(label, value) {
 }
 
 function chart(points) {
-  if (!points.length) return el("p", { class: "muted" }, "这段时间还没有连接日志。");
-  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  svg.setAttribute("viewBox", "0 0 640 180");
-  svg.setAttribute("class", "chart");
-  const max = Math.max(...points.map((p) => Number(p.hits) || 0), 1);
-  const pad = 10;
-  const step = points.length === 1 ? 0 : (640 - pad * 2) / (points.length - 1);
-  let d = "";
-  points.forEach((p, i) => {
-    const x = pad + i * step;
-    const y = 170 - pad - ((Number(p.hits) || 0) / max) * (170 - pad * 2);
-    d += (i ? "L" : "M") + x.toFixed(1) + "," + y.toFixed(1);
+  return trendChart([{ name: "all", points: points || [] }], "hits", { bytesLine: true });
+}
+
+const palette = ["#d6f25c", "#79d7c3", "#e6b35a", "#f07178", "#8bd17c", "#9aa7ff"];
+const protoColor = { tcp: "#d6f25c", udp: "#79d7c3", icmp: "#e6b35a" };
+
+function seriesColor(name, index) {
+  return protoColor[name] || palette[index % palette.length];
+}
+
+function metricValue(point, metric) {
+  if (!point) return 0;
+  return metric === "bytes" ? Number(point.bytes) || 0 : Number(point.hits) || 0;
+}
+
+function fmtMetric(value, metric) {
+  return metric === "bytes" ? fmtBytes(value) : String(Math.round(Number(value) || 0));
+}
+
+function fmtTick(ts) {
+  const date = new Date(ts);
+  if (Number.isNaN(date.getTime())) return "";
+  const hh = String(date.getHours()).padStart(2, "0");
+  const mm = String(date.getMinutes()).padStart(2, "0");
+  if (state.range === "24h" || state.range === "7d") return (date.getMonth() + 1) + "/" + date.getDate() + " " + hh + ":00";
+  return hh + ":" + mm;
+}
+
+function svgEl(name, attrs, text) {
+  const node = document.createElementNS("http://www.w3.org/2000/svg", name);
+  for (const [key, value] of Object.entries(attrs || {})) node.setAttribute(key, String(value));
+  if (text != null) node.textContent = text;
+  return node;
+}
+
+function alignSeries(series) {
+  const times = [];
+  const seen = new Set();
+  for (const item of series) {
+    for (const point of item.points || []) {
+      if (!seen.has(point.t)) {
+        seen.add(point.t);
+        times.push(point.t);
+      }
+    }
+  }
+  times.sort((a, b) => a - b);
+  const rows = series.map((item) => {
+    const map = new Map((item.points || []).map((point) => [point.t, point]));
+    return times.map((t) => map.get(t) || { t, hits: 0, bytes: 0 });
   });
-  const path = document.createElementNS(svg.namespaceURI, "path");
-  path.setAttribute("d", d);
-  path.setAttribute("fill", "none");
-  path.setAttribute("stroke", "#d6f25c");
-  path.setAttribute("stroke-width", "2");
-  svg.appendChild(path);
+  return { times, rows };
+}
+
+function trendChart(series, metric, opt) {
+  opt = opt || {};
+  const clean = (series || []).filter((item) => item && (item.points || []).length);
+  if (!clean.length) return el("p", { class: "muted" }, "这段时间还没有连接日志。");
+  const { times, rows } = alignSeries(clean);
+  if (!times.length) return el("p", { class: "muted" }, "这段时间还没有连接日志。");
+  const width = 720;
+  const height = opt.tall ? 280 : 200;
+  const left = 54;
+  const right = opt.bytesLine ? 58 : 16;
+  const top = 16;
+  const bottom = 28;
+  const plotW = width - left - right;
+  const plotH = height - top - bottom;
+  const values = rows.map((row) => row.map((point) => metricValue(point, metric)));
+  const bytes = rows.map((row) => row.map((point) => metricValue(point, "bytes")));
+  let max = 1;
+  if (clean.length > 1 && clean[0].name !== "all") {
+    for (let i = 0; i < times.length; i++) {
+      let sum = 0;
+      values.forEach((row) => { sum += row[i]; });
+      if (sum > max) max = sum;
+    }
+  } else {
+    values.forEach((row) => row.forEach((value) => { if (value > max) max = value; }));
+  }
+  let maxBytes = 1;
+  bytes.forEach((row) => row.forEach((value) => { if (value > maxBytes) maxBytes = value; }));
+  const xAt = (i) => left + (times.length === 1 ? plotW / 2 : (plotW * i) / (times.length - 1));
+  const yAt = (value, peak) => top + plotH - (value / peak) * plotH;
+  const svg = svgEl("svg", { viewBox: "0 0 " + width + " " + height, class: opt.tall ? "chart tall" : "chart" });
+  for (let tick = 0; tick <= 3; tick++) {
+    const y = top + (plotH * tick) / 3;
+    svg.appendChild(svgEl("line", { x1: left, x2: width - right, y1: y, y2: y, stroke: "#2c342f" }));
+    svg.appendChild(svgEl("text", { x: 4, y: y + 4, fill: "#8e9c93", "font-size": 11 }, fmtMetric(max * (1 - tick / 3), metric)));
+  }
+  const xs = times.map((_, i) => xAt(i));
+  if (clean.length > 1 && clean[0].name !== "all") {
+    const base = values[0].map(() => 0);
+    values.forEach((row, index) => {
+      const yTop = row.map((value, i) => yAt(base[i] + value, max));
+      const yBot = base.map((value) => yAt(value, max));
+      const path = svgEl("path", { d: areaPath(xs, yTop, yBot), fill: seriesColor(clean[index].name, index), "fill-opacity": "0.82" });
+      const title = svgEl("title");
+      title.textContent = clean[index].name;
+      path.appendChild(title);
+      svg.appendChild(path);
+      row.forEach((value, i) => { base[i] += value; });
+    });
+  } else {
+    const yTop = values[0].map((value) => yAt(value, max));
+    const yBot = values[0].map(() => yAt(0, max));
+    svg.appendChild(svgEl("path", { d: areaPath(xs, yTop, yBot), fill: "#d6f25c", "fill-opacity": "0.22" }));
+    svg.appendChild(svgEl("path", { d: linePath(xs, yTop), fill: "none", stroke: "#d6f25c", "stroke-width": 2 }));
+  }
+  if (opt.bytesLine) {
+    const yBytes = bytes[0].map((value) => yAt(value, maxBytes));
+    svg.appendChild(svgEl("path", { d: linePath(xs, yBytes), fill: "none", stroke: "#79d7c3", "stroke-width": 2 }));
+    svg.appendChild(svgEl("text", { x: width - 4, y: top + 10, fill: "#79d7c3", "font-size": 11, "text-anchor": "end" }, fmtBytes(maxBytes)));
+  }
+  const marks = times.length < 3 ? [0] : [0, Math.floor((times.length - 1) / 2), times.length - 1];
+  marks.forEach((i) => {
+    svg.appendChild(svgEl("text", { x: xAt(i), y: height - 8, fill: "#8e9c93", "font-size": 11, "text-anchor": i === 0 ? "start" : "middle" }, fmtTick(times[i])));
+  });
   return svg;
+}
+
+function areaPath(xs, yTop, yBot) {
+  let d = "";
+  xs.forEach((x, i) => { d += (i ? "L" : "M") + x.toFixed(1) + "," + yTop[i].toFixed(1); });
+  for (let i = xs.length - 1; i >= 0; i--) d += "L" + xs[i].toFixed(1) + "," + yBot[i].toFixed(1);
+  return d + "Z";
+}
+
+function linePath(xs, ys) {
+  return xs.map((x, i) => (i ? "L" : "M") + x.toFixed(1) + "," + ys[i].toFixed(1)).join("");
+}
+
+function donut(rows, metric) {
+  const box = el("div");
+  const used = (rows || []).filter((row) => metricValue(row, metric) > 0);
+  if (!used.length) {
+    box.appendChild(el("p", { class: "muted" }, "没有协议数据"));
+    return box;
+  }
+  const total = used.reduce((sum, row) => sum + metricValue(row, metric), 0) || 1;
+  const svg = svgEl("svg", { viewBox: "0 0 120 120", class: "donut" });
+  const radius = 38;
+  const circ = 2 * Math.PI * radius;
+  let offset = 0;
+  used.forEach((row, index) => {
+    const frac = metricValue(row, metric) / total;
+    const circle = svgEl("circle", {
+      cx: 60, cy: 60, r: radius, fill: "none",
+      stroke: seriesColor(row.key, index),
+      "stroke-width": 16,
+      "stroke-dasharray": (frac * circ).toFixed(2) + " " + circ.toFixed(2),
+      "stroke-dashoffset": (-offset).toFixed(2),
+      transform: "rotate(-90 60 60)",
+    });
+    const title = svgEl("title");
+    title.textContent = row.key + " " + fmtMetric(metricValue(row, metric), metric);
+    circle.appendChild(title);
+    circle.style.cursor = "pointer";
+    circle.addEventListener("click", () => openFilter("proto", row.key, "flow"));
+    svg.appendChild(circle);
+    offset += frac * circ;
+  });
+  svg.appendChild(svgEl("text", { x: 60, y: 58, fill: "#e7f0e9", "font-size": 11, "text-anchor": "middle" }, metric === "bytes" ? "流量" : "连接"));
+  svg.appendChild(svgEl("text", { x: 60, y: 72, fill: "#8e9c93", "font-size": 10, "text-anchor": "middle" }, fmtMetric(total, metric)));
+  box.appendChild(svg);
+  used.forEach((row, index) => {
+    const line = el("div", { class: "share" });
+    const left = el("button", { class: "link", type: "button" });
+    left.appendChild(el("span", { class: "swatch" }));
+    left.lastChild.style.background = seriesColor(row.key, index);
+    left.appendChild(document.createTextNode(" " + row.key));
+    left.addEventListener("click", () => openFilter("proto", row.key, "flow"));
+    line.appendChild(left);
+    line.appendChild(el("span", null, Math.round(100 * metricValue(row, metric) / total) + "% · " + fmtMetric(metricValue(row, metric), metric)));
+    box.appendChild(line);
+  });
+  return box;
+}
+
+function compareBars(title, rows, field, metric) {
+  const box = el("div");
+  box.appendChild(el("h2", null, title));
+  const list = rows || [];
+  if (!list.length) {
+    box.appendChild(el("p", { class: "muted" }, "没有数据"));
+    return box;
+  }
+  const max = Math.max(...list.map((row) => metricValue(row, metric)), 1);
+  for (const row of list) {
+    const line = el("div", { class: "rowline" });
+    const button = el("button", { class: "link", type: "button" }, row.key);
+    button.addEventListener("click", () => openFilter(field, row.key, "flow"));
+    line.appendChild(button);
+    line.appendChild(el("span", { class: "tag" }, fmtMetric(metricValue(row, metric), metric)));
+    const bar = el("div", { class: "bar" });
+    const span = document.createElement("span");
+    span.style.width = Math.max(2, (metricValue(row, metric) / max) * 100) + "%";
+    bar.appendChild(span);
+    box.appendChild(line);
+    box.appendChild(bar);
+  }
+  return box;
 }
 
 function rankList(title, rows, field, kind) {
@@ -196,10 +379,54 @@ async function loadOverview() {
   } catch (err) {
     onErr(err);
   }
-  document.getElementById("chartcard").replaceChildren(el("h2", null, "连接数"), chart(series.points || []));
+  document.getElementById("chartcard").replaceChildren(el("h2", null, "连接与流量"), chart(series.points || []));
   document.getElementById("topdomains").replaceChildren(rankList("域名", domains.rows || [], "domain", "flow"));
   document.getElementById("topapps").replaceChildren(rankList("应用", apps.rows || [], "app", "flow"));
   document.getElementById("topports").replaceChildren(rankList("目标端口", ports.rows || [], "dst_port", "flow"));
+}
+
+async function loadAnalyze() {
+  const range = "range=" + encodeURIComponent(state.range);
+  const [st, series, protos, domains, apps, ports, ips] = await Promise.all([
+    api("/api/status"),
+    api("/api/series?" + range + "&kind=flow&by=proto"),
+    api("/api/rank?by=proto&kind=flow&" + range + "&limit=6"),
+    api("/api/rank?by=domain&kind=flow&" + range + "&limit=8"),
+    api("/api/rank?by=app&kind=flow&" + range + "&limit=8"),
+    api("/api/rank?by=dst_port&kind=flow&" + range + "&limit=8"),
+    api("/api/rank?by=dst_ip&kind=flow&" + range + "&limit=8"),
+  ]);
+  paintStatus(st);
+  analyzeCache = { series: series.series || [], protos, domains, apps, ports, ips };
+  paintAnalyze();
+}
+
+function paintAnalyze() {
+  const data = analyzeCache;
+  if (!data) return;
+  const metric = state.metric === "hits" ? "hits" : "bytes";
+  const trend = document.getElementById("trend");
+  trend.replaceChildren(el("h2", null, metric === "bytes" ? "流量趋势" : "连接趋势"));
+  const legend = el("div", { class: "legend" });
+  const drawn = (data.series || []).filter((item) => item.name && item.name !== "all");
+  drawn.forEach((item, index) => {
+    const button = el("button", { type: "button" });
+    button.appendChild(el("span", { class: "swatch" }));
+    button.lastChild.style.background = seriesColor(item.name, index);
+    button.appendChild(document.createTextNode(item.name));
+    button.addEventListener("click", () => openFilter("proto", item.name, "flow"));
+    legend.appendChild(button);
+  });
+  trend.appendChild(trendChart(drawn.length ? drawn : [{ name: "all", points: (data.series[0] && data.series[0].points) || [] }], metric, { tall: true }));
+  if (drawn.length) trend.appendChild(legend);
+  const share = document.getElementById("protoshare");
+  share.replaceChildren(el("h2", null, "协议占比"));
+  share.appendChild(donut(data.protos.rows || [], metric));
+  document.getElementById("analyzesum").textContent = "当前范围 " + Math.round(Number(data.protos.hits) || 0) + " 条连接，流量 " + fmtBytes(data.protos.bytes);
+  document.getElementById("board-domain").replaceChildren(compareBars("域名", data.domains.rows || [], "domain", metric));
+  document.getElementById("board-app").replaceChildren(compareBars("应用", data.apps.rows || [], "app", metric));
+  document.getElementById("board-port").replaceChildren(compareBars("目标端口", data.ports.rows || [], "dst_port", metric));
+  document.getElementById("board-ip").replaceChildren(compareBars("目标地址", data.ips.rows || [], "dst_ip", metric));
 }
 
 async function loadFlows() {
@@ -346,6 +573,7 @@ async function refresh() {
   busy = true;
   try {
     if (state.tab === "overview") await loadOverview();
+    else if (state.tab === "analyze") await loadAnalyze();
     else if (state.tab === "flows") await loadFlows();
     else if (state.tab === "rank") await loadRank();
     else await loadSettings();
@@ -358,7 +586,7 @@ async function refresh() {
 
 function show(tab) {
   state.tab = tab;
-  for (const name of ["overview", "flows", "rank", "settings"]) {
+  for (const name of ["overview", "analyze", "flows", "rank", "settings"]) {
     document.getElementById(name).classList.toggle("hidden", name !== tab);
   }
   document.querySelectorAll("button.nav").forEach((button) => {
@@ -382,6 +610,13 @@ document.getElementById("ranges").addEventListener("click", (event) => {
   state.range = button.dataset.range;
   mark("ranges", "range", state.range);
   refresh();
+});
+document.getElementById("metric").addEventListener("click", (event) => {
+  const button = event.target.closest("button");
+  if (!button) return;
+  state.metric = button.dataset.metric;
+  mark("metric", "metric", state.metric);
+  if (analyzeCache) paintAnalyze();
 });
 document.getElementById("rankby").addEventListener("click", (event) => {
   const button = event.target.closest("button");
