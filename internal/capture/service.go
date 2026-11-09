@@ -361,7 +361,7 @@ func (s *Service) dnsRecord(iface string, fr parse.Frame, msg parse.DNSMessage, 
 }
 
 func (s *Service) touchFlow(iface string, fr parse.Frame, payload []byte, now time.Time) {
-	key := makeKey(iface, fr.Proto, fr.Src, fr.SrcPort, fr.Dst, fr.DstPort)
+	key := makeKey(iface, fr.Proto, fr.Src, fr.Dst, fr.SrcPort, fr.DstPort)
 	st := s.flows[key]
 	if st == nil {
 		if len(s.flows) >= maxFlows {

@@ -138,11 +138,9 @@ func ethIPv4(proto byte, src, dst [4]byte, sp, dp uint16, payload []byte, flags 
 func TestMakeKeyStable(t *testing.T) {
 	a := netip.MustParseAddr("10.0.0.1")
 	b := netip.MustParseAddr("1.1.1.1")
-	k1 := makeKey("eth0", "tcp", a, 1, b, 2)
-	k2 := makeKey("eth0", "tcp", b, 2, a, 1)
+	k1 := makeKey("eth0", "tcp", a, b, 1, 2)
+	k2 := makeKey("eth0", "tcp", b, a, 2, 1)
 	if k1 != k2 {
 		t.Fatalf("%+v %+v", k1, k2)
 	}
 }
-
-var _ = model.Record{}
