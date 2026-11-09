@@ -18,7 +18,7 @@ func TestLoadMissingUsesDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Listen != "127.0.0.1:8787" {
+	if cfg.Listen != "0.0.0.0:8787" {
 		t.Fatalf("listen %s", cfg.Listen)
 	}
 	if cfg.VictoriaLogs.ID != "0:0" {
@@ -80,6 +80,21 @@ func TestSaveRoundTrip(t *testing.T) {
 	}
 	if got.VictoriaLogs.ID != "0:0" {
 		t.Fatalf("id %s", got.VictoriaLogs.ID)
+	}
+}
+
+func TestRandomToken(t *testing.T) {
+	token, err := RandomToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(token) != 24 {
+		t.Fatalf("token %s", token)
+	}
+	cfg := Config{Listen: "0.0.0.0:8787", Token: token}
+	cfg.Normalize()
+	if err := cfg.Validate(); err != nil {
+		t.Fatal(err)
 	}
 }
 

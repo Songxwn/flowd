@@ -1,5 +1,5 @@
 # 复制为 config.yaml 后按需修改。容器部署时网页保存的配置写在数据卷里，一般不用手改这份文件。
-listen: 127.0.0.1:8787
+listen: 0.0.0.0:8787
 token: ""
 victorialogs:
   url: http://127.0.0.1:9428

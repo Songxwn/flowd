@@ -1,6 +1,8 @@
 package config
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"net"
 	"net/url"
 	"os"
@@ -148,7 +150,7 @@ func (c *Config) applyEnv() {
 
 func (c *Config) Normalize() {
 	if strings.TrimSpace(c.Listen) == "" {
-		c.Listen = "127.0.0.1:8787"
+		c.Listen = "0.0.0.0:8787"
 	}
 	c.Listen = strings.TrimSpace(c.Listen)
 	if strings.TrimSpace(c.VictoriaLogs.URL) == "" {
@@ -202,6 +204,15 @@ func (c *Config) Normalize() {
 	c.Filter.IncludePorts = cleanPorts(c.Filter.IncludePorts)
 	c.Filter.ExcludePorts = cleanPorts(c.Filter.ExcludePorts)
 	c.Token = strings.TrimSpace(c.Token)
+}
+
+// RandomToken 生成网页登录口令。只含十六进制字符，可以写进口令字段。
+func RandomToken() (string, error) {
+	buf := make([]byte, 12)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(buf), nil
 }
 
 func (c Config) Validate() error {

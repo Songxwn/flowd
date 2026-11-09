@@ -47,6 +47,17 @@ func main() {
 		}
 		cfg.Hostname = host
 	}
+	if cfg.Token == "" {
+		token, err := config.RandomToken()
+		if err != nil {
+			log.Fatalf("生成网页口令失败: %v", err)
+		}
+		cfg.Token = token
+		if err := config.Save(path, cfg); err != nil {
+			log.Printf("网页口令没能写入 %s: %v", path, err)
+		}
+		log.Printf("网页尚未设置口令，已生成并用于本次登录: %s", token)
+	}
 
 	log.Printf("flowd %s 配置 %s，监听 %s，VictoriaLogs %s 租户 %s", version, path, cfg.Listen, cfg.VictoriaLogs.URL, cfg.VictoriaLogs.ID)
 	if !capture.Supported() {

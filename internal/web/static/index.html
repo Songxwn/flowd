@@ -11,8 +11,8 @@
 <body>
   <div id="login" class="login hidden">
     <form id="loginForm">
-      <h2>输入口令</h2>
-      <p class="muted">这个实例设置了访问口令。</p>
+      <h2>登录</h2>
+      <p class="muted">网页对所有网卡开放。口令在配置文件的 token，或首次启动日志里。</p>
       <input id="loginToken" type="password" autocomplete="current-password" required>
       <button class="primary" type="submit">进入</button>
       <p id="loginErr" class="notice err"></p>
@@ -41,6 +41,7 @@
         <span id="vlstate" class="pill">VictoriaLogs</span>
         <label class="auto"><input id="auto" type="checkbox" checked> 自动刷新</label>
         <button id="reload" type="button">刷新</button>
+        <button id="logout" type="button">退出</button>
       </header>
       <div id="notice" class="notice"></div>
       <div id="banner" class="banner hidden"></div>
@@ -146,7 +147,6 @@
           <label class="check"><input id="ownweb" type="checkbox" checked> 不记录访问本服务网页的连接</label>
           <label>新口令<input id="token" type="password" autocomplete="new-password"></label>
           <p id="tokenHint" class="muted"></p>
-          <label class="check"><input id="clearToken" type="checkbox"> 清除口令</label>
           <button class="primary" type="submit">保存并应用</button>
         </form>
       </section>

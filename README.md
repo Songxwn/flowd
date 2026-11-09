@@ -13,23 +13,26 @@ docker compose pull
 docker compose up -d
 ```
 
-然后在这台机器上打开 <http://127.0.0.1:8787>。到「设置」里勾选网卡并保存，采集马上开始。
+然后打开 <http://这台机器的地址:8787>，用口令登录。到「设置」里勾选网卡并保存，采集马上开始。
 
-`flowd` 使用主机网络，才能看到宿主机网卡；同时使用主机 PID 命名空间，才能把连接对应到宿主机进程。VictoriaLogs 只监听 `127.0.0.1:9428`。镜像是 `ghcr.io/songxwn/flowd`，数据默认保留 30 天。租户默认 `0:0`。要写入别的租户时加上 `FLOWD_VL_ID`，例如 `12:34`。
+`flowd` 使用主机网络，才能看到宿主机网卡；同时使用主机 PID 命名空间，才能把连接对应到宿主机进程。网页默认监听 `0.0.0.0:8787`，必须登录后才能看数据。VictoriaLogs 只监听 `127.0.0.1:9428`。镜像是 `ghcr.io/songxwn/flowd`，数据默认保留 30 天。租户默认 `0:0`。要写入别的租户时加上 `FLOWD_VL_ID`，例如 `12:34`。
 
-网页默认只绑定本机。要给别的机器访问时，设置口令并修改监听地址，然后重启容器：
+没有设置 `FLOWD_TOKEN` 时，第一次启动会生成口令，写进数据卷里的配置，并打在日志里。自己指定口令时加上：
 
 ```yaml
 environment:
-  FLOWD_LISTEN: 0.0.0.0:8787
   FLOWD_TOKEN: 换成你自己的口令
+```
+
+```bash
+docker compose logs flowd
 ```
 
 `FLOWD_IFACES` 如果设了，每次启动都会覆盖网页里保存的网卡列表。
 
 ## 用二进制部署
 
-flowd 装成本机程序，用 systemd 开机自启。VictoriaLogs 二选一：本机二进制，或者只用 Docker 跑 VictoriaLogs。版本与上面的 Compose 一致：VictoriaLogs `v1.53.0`，flowd `v0.1.6`。flowd 支持 `x86_64` 和 `aarch64`。不要执行 `go build`。
+flowd 装成本机程序，用 systemd 开机自启。VictoriaLogs 二选一：本机二进制，或者只用 Docker 跑 VictoriaLogs。版本与上面的 Compose 一致：VictoriaLogs `v1.53.0`，flowd `v0.1.7`。flowd 支持 `x86_64` 和 `aarch64`。不要执行 `go build`。
 
 整套 Compose 和这套二进制不要同时占用 `9428`、`8787`。已经用上一节的 Compose 时，不用再往下做。VictoriaLogs 的两种装法也不要一起占用 `9428`。
 
@@ -182,7 +185,7 @@ sudo docker run -d --name victorialogs --restart unless-stopped \
 ### 3. 安装 flowd
 
 ```bash
-FLOWD_VERSION=v0.1.6
+FLOWD_VERSION=v0.1.7
 case "$(uname -m)" in
   x86_64) ARCH=amd64 ;;
   aarch64|arm64) ARCH=arm64 ;;
@@ -200,7 +203,7 @@ rm -rf "$tmp"
 写入 `/etc/flowd/config.yaml`。网卡先留空，等网页里勾选；保存后会写回这个文件。
 
 ```yaml
-listen: 127.0.0.1:8787
+listen: 0.0.0.0:8787
 token: ""
 victorialogs:
   url: http://127.0.0.1:9428
@@ -256,7 +259,13 @@ curl -fsS http://127.0.0.1:8787/api/health
 echo
 ```
 
-然后在这台机器上打开 <http://127.0.0.1:8787>，到「设置」里勾选网卡并保存。采集立刻开始，不用再重启。
+然后打开 <http://这台机器的地址:8787>。`token` 留空时，第一次启动会生成口令并写回配置文件，同时出现在日志里：
+
+```bash
+sudo journalctl -u flowd -n 80 --no-pager
+```
+
+用这个口令登录，到「设置」里勾选网卡并保存。采集立刻开始，不用再重启。也可以事先把 `token` 写成自己的口令。登录后可以在设置里修改，修改后需要重新登录。
 
 `curl` 的结果里应有 `"ok": true`。抓包失败时日志里会写需要 root 或 `CAP_NET_RAW`：
 
@@ -280,20 +289,13 @@ kind:="flow"
 
 flowd 总览里的写入计数会增加。计数不增加时，先看 flowd 日志里的 VictoriaLogs 地址是不是 `http://127.0.0.1:9428`。本机二进制用 `systemctl is-active victorialogs`，Docker 用 `sudo docker ps --filter name=victorialogs`。两边都再执行一次 `curl -fsS http://127.0.0.1:9428/health`。
 
-### 5. 给别的机器打开网页
+### 5. 网页登录
 
-VictoriaLogs 继续只监听 `127.0.0.1`。只把 flowd 网页暴露出去，并设置口令。改 `/etc/flowd/config.yaml`：
+网页默认监听 `0.0.0.0:8787`，所有接口都要登录。健康检查 `/api/health` 不需要口令。VictoriaLogs 继续只监听 `127.0.0.1`。防火墙放行 `8787`，不要放行 `9428`。
 
-```yaml
-listen: 0.0.0.0:8787
-token: 换成你自己的口令
-```
+口令写在配置里的 `token`，或用环境变量 `FLOWD_TOKEN`。脚本访问接口时带请求头 `Authorization: Bearer 口令`。浏览器登录后使用会话 cookie，退出会作废这次登录。
 
-```bash
-sudo systemctl restart flowd
-```
-
-防火墙放行 `8787`，不要放行 `9428`。改 `listen` 必须重启进程；改网卡、过滤条件和 VictoriaLogs 地址可以在网页里保存，立即生效。
+只想本机打开网页时，把 `listen` 改成 `127.0.0.1:8787` 后重启。改 `listen` 必须重启进程；改网卡、过滤条件、口令和 VictoriaLogs 地址可以在网页里保存，除监听地址外立即生效。
 
 环境变量会盖过配置文件里的同名项，适合临时指定：
 

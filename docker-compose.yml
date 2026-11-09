@@ -25,7 +25,7 @@ services:
     pid: host
     environment:
       FLOWD_CONFIG: /var/lib/flowd/config.yaml
-      FLOWD_LISTEN: 127.0.0.1:8787
+      FLOWD_LISTEN: 0.0.0.0:8787
       FLOWD_VL_URL: http://127.0.0.1:9428
       FLOWD_PROC_ROOT: /proc
     volumes:

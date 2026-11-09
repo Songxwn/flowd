@@ -2,7 +2,9 @@ package api
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/subtle"
+	"encoding/hex"
 	"encoding/json"
 	"io"
 	"net"
@@ -22,15 +24,16 @@ import (
 
 // Server 提供本机网页和查询接口。
 type Server struct {
-	mu      sync.RWMutex
-	cfg     config.Config
-	path    string
-	bound   string
-	version string
-	svc     *capture.Service
-	logs    *vlogs.Client
-	sink    *vlogs.Sink
-	vlErr   atomic.Value
+	mu       sync.RWMutex
+	cfg      config.Config
+	path     string
+	bound    string
+	version  string
+	svc      *capture.Service
+	logs     *vlogs.Client
+	sink     *vlogs.Sink
+	vlErr    atomic.Value
+	sessions map[string]time.Time
 }
 
 type Options struct {
@@ -45,13 +48,14 @@ type Options struct {
 
 func New(opt Options) *Server {
 	s := &Server{
-		cfg:     opt.Config,
-		path:    opt.Path,
-		bound:   opt.Bound,
-		version: opt.Version,
-		svc:     opt.Service,
-		logs:    opt.Logs,
-		sink:    opt.Sink,
+		cfg:      opt.Config,
+		path:     opt.Path,
+		bound:    opt.Bound,
+		version:  opt.Version,
+		svc:      opt.Service,
+		logs:     opt.Logs,
+		sink:     opt.Sink,
+		sessions: map[string]time.Time{},
 	}
 	s.vlErr.Store("正在检查 VictoriaLogs")
 	return s
@@ -85,6 +89,7 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", s.health)
 	mux.HandleFunc("POST /api/login", s.login)
+	mux.HandleFunc("POST /api/logout", s.logout)
 	mux.HandleFunc("GET /api/status", s.authed(s.status))
 	mux.HandleFunc("GET /api/ifaces", s.authed(s.ifaces))
 	mux.HandleFunc("GET /api/config", s.authed(s.getConfig))
@@ -115,22 +120,30 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	s.mu.RLock()
 	want := s.cfg.Token
 	s.mu.RUnlock()
-	if want == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "当前没有设置口令"})
-		return
-	}
-	if !tokenMatch(in.Token, want) {
+	if want == "" || !tokenMatch(in.Token, want) {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "口令不正确"})
 		return
 	}
-	http.SetCookie(w, &http.Cookie{
-		Name:     "flowd_token",
-		Value:    want,
-		Path:     "/",
-		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
-		MaxAge:   86400 * 14,
-	})
+	id, err := newSessionID()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "无法创建登录状态"})
+		return
+	}
+	s.mu.Lock()
+	s.pruneSessionsLocked(time.Now())
+	s.sessions[id] = time.Now().Add(14 * 24 * time.Hour)
+	s.mu.Unlock()
+	http.SetCookie(w, sessionCookie(id, 86400*14))
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
+	if c, err := r.Cookie("flowd_session"); err == nil {
+		s.mu.Lock()
+		delete(s.sessions, c.Value)
+		s.mu.Unlock()
+	}
+	http.SetCookie(w, sessionCookie("", -1))
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
@@ -296,10 +309,16 @@ func (s *Server) putConfig(w http.ResponseWriter, r *http.Request) {
 		cfg.Capture.ExcludeOwnWeb = in.ExcludeOwnWeb
 	}
 	if in.ClearToken {
-		cfg.Token = ""
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "口令不能清除"})
+		return
 	}
+	prev := cfg.Token
 	if strings.TrimSpace(in.Token) != "" {
 		cfg.Token = strings.TrimSpace(in.Token)
+	}
+	if cfg.Token == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "口令不能为空"})
+		return
 	}
 	cfg.Normalize()
 	if err := cfg.Validate(); err != nil {
@@ -315,6 +334,9 @@ func (s *Server) putConfig(w http.ResponseWriter, r *http.Request) {
 	s.svc.Update(cfg)
 	s.mu.Lock()
 	s.cfg = cfg
+	if cfg.Token != prev {
+		s.sessions = map[string]time.Time{}
+	}
 	s.mu.Unlock()
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ok":               true,
@@ -447,8 +469,9 @@ func (s *Server) authed(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		s.mu.RLock()
 		want := s.cfg.Token
+		ok := tokenMatch(tokenFrom(r), want) || s.sessionOKLocked(r, time.Now())
 		s.mu.RUnlock()
-		if !tokenMatch(tokenFrom(r), want) {
+		if !ok {
 			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "需要口令"})
 			return
 		}
@@ -456,27 +479,54 @@ func (s *Server) authed(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+func (s *Server) sessionOKLocked(r *http.Request, now time.Time) bool {
+	c, err := r.Cookie("flowd_session")
+	if err != nil || c.Value == "" {
+		return false
+	}
+	exp, ok := s.sessions[c.Value]
+	return ok && now.Before(exp)
+}
+
+func (s *Server) pruneSessionsLocked(now time.Time) {
+	for id, exp := range s.sessions {
+		if !now.Before(exp) {
+			delete(s.sessions, id)
+		}
+	}
+}
+
 func tokenFrom(r *http.Request) string {
 	if h := r.Header.Get("Authorization"); strings.HasPrefix(h, "Bearer ") {
 		return strings.TrimSpace(strings.TrimPrefix(h, "Bearer "))
 	}
-	if h := strings.TrimSpace(r.Header.Get("X-Flowd-Token")); h != "" {
-		return h
-	}
-	if c, err := r.Cookie("flowd_token"); err == nil {
-		return c.Value
-	}
-	return ""
+	return strings.TrimSpace(r.Header.Get("X-Flowd-Token"))
 }
 
 func tokenMatch(got, want string) bool {
-	if want == "" {
-		return true
-	}
-	if len(got) != len(want) {
+	if want == "" || got == "" || len(got) != len(want) {
 		return false
 	}
 	return subtle.ConstantTimeCompare([]byte(got), []byte(want)) == 1
+}
+
+func newSessionID() (string, error) {
+	buf := make([]byte, 32)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(buf), nil
+}
+
+func sessionCookie(value string, maxAge int) *http.Cookie {
+	return &http.Cookie{
+		Name:     "flowd_session",
+		Value:    value,
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   maxAge,
+	}
 }
 
 func decodeJSON(r *http.Request, dest any) error {

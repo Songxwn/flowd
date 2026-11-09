@@ -498,8 +498,7 @@ function fillForm(cfg) {
   document.getElementById("proc").checked = !!cfg.proc_enabled;
   document.getElementById("ownweb").checked = cfg.exclude_own_web !== false;
   document.getElementById("token").value = "";
-  document.getElementById("clearToken").checked = false;
-  document.getElementById("tokenHint").textContent = cfg.token_set ? "已设置口令。留空表示不修改。" : "当前没有口令。";
+  document.getElementById("tokenHint").textContent = "留空表示不修改。保存新口令后需要重新登录。";
 }
 
 function renderIfaces(list) {
@@ -560,7 +559,6 @@ async function saveConfig(event) {
       proc_enabled: document.getElementById("proc").checked,
       exclude_own_web: document.getElementById("ownweb").checked,
       token: document.getElementById("token").value,
-      clear_token: document.getElementById("clearToken").checked,
     }),
   });
   setNotice(result.restart_required ? "已保存。监听地址要重启进程后才会改变。" : "已保存，采集和过滤已经生效。", true);
@@ -646,6 +644,14 @@ document.getElementById("settingsForm").addEventListener("submit", (event) => {
 document.getElementById("reload").addEventListener("click", () => {
   if (state.tab === "settings") state.settingsLoaded = false;
   refresh();
+});
+document.getElementById("logout").addEventListener("click", async () => {
+  try {
+    await api("/api/logout", { method: "POST", body: "{}" });
+  } catch (err) {
+    onErr(err);
+  }
+  document.getElementById("login").classList.remove("hidden");
 });
 document.getElementById("loginForm").addEventListener("submit", async (event) => {
   event.preventDefault();
