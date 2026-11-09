@@ -29,7 +29,7 @@ environment:
 
 ## 用二进制部署
 
-下面在同一台 Linux 上安装 VictoriaLogs 和 flowd，并用 systemd 开机自启。版本与 Compose 一致：VictoriaLogs `v1.53.0`，flowd `v0.1.1`。支持 `x86_64` 和 `aarch64`。不要执行 `go build`。
+下面在同一台 Linux 上安装 VictoriaLogs 和 flowd，并用 systemd 开机自启。版本与 Compose 一致：VictoriaLogs `v1.53.0`，flowd `v0.1.2`。支持 `x86_64` 和 `aarch64`。不要执行 `go build`。
 
 Compose 和这套二进制不要同时占用 `9428`、`8787`。已经用 Compose 时，继续用上一节即可。
 
@@ -104,7 +104,7 @@ echo
 ### 3. 安装 flowd
 
 ```bash
-FLOWD_VERSION=v0.1.1
+FLOWD_VERSION=v0.1.2
 case "$(uname -m)" in
   x86_64) ARCH=amd64 ;;
   aarch64|arm64) ARCH=arm64 ;;
