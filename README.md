@@ -59,6 +59,8 @@ flowd 抓包需要 root，服务单元里已经写成 `User=root`。
 
 它是单个可执行文件，解压后的名字是 `victoria-logs-prod`。装到固定路径 `/usr/local/bin/victoria-logs`，以后换版本只替换这个文件。数据放在 `/var/lib/victoria-logs`。
 
+压缩包文件名是 `victoria-logs-linux-amd64-v1.53.0.tar.gz`（arm64 把 `amd64` 换成 `arm64`），这个文件在 [v1.53.0](https://github.com/VictoriaMetrics/VictoriaLogs/releases/tag/v1.53.0) 里存在。访问 GitHub Release 文件时，CDN 经常直接返回 404，和文件名无关。下面的脚本先下载压缩包；只要 `curl` 失败，就从同一版本的 Docker 镜像里拷出 `/victoria-logs-prod`。本机没有 Docker、GitHub 又是 404 时，改用下面的选项 B。
+
 ```bash
 VL_VERSION=v1.53.0
 case "$(uname -m)" in
@@ -68,10 +70,20 @@ case "$(uname -m)" in
 esac
 
 tmp=$(mktemp -d)
-curl -fL -o "$tmp/victoria-logs.tar.gz" \
-  "https://github.com/VictoriaMetrics/VictoriaLogs/releases/download/${VL_VERSION}/victoria-logs-linux-${ARCH}-${VL_VERSION}.tar.gz"
-tar -xzf "$tmp/victoria-logs.tar.gz" -C "$tmp"
-sudo install -m 0755 "$tmp/victoria-logs-prod" /usr/local/bin/victoria-logs
+url="https://github.com/VictoriaMetrics/VictoriaLogs/releases/download/${VL_VERSION}/victoria-logs-linux-${ARCH}-${VL_VERSION}.tar.gz"
+if curl -fL --retry 3 -A "Mozilla/5.0" -o "$tmp/victoria-logs.tar.gz" "$url"; then
+  tar -xzf "$tmp/victoria-logs.tar.gz" -C "$tmp"
+  bin=$(find "$tmp" -type f -name victoria-logs-prod | head -n 1)
+else
+  echo "GitHub 发布包下载失败，改从 Docker 镜像取出 ${VL_VERSION}"
+  sudo docker pull "docker.io/victoriametrics/victoria-logs:${VL_VERSION}"
+  cid=$(sudo docker create "docker.io/victoriametrics/victoria-logs:${VL_VERSION}")
+  sudo docker cp "$cid:/victoria-logs-prod" "$tmp/victoria-logs-prod"
+  sudo docker rm "$cid"
+  bin="$tmp/victoria-logs-prod"
+fi
+test -n "$bin" -a -f "$bin"
+sudo install -m 0755 "$bin" /usr/local/bin/victoria-logs
 rm -rf "$tmp"
 /usr/local/bin/victoria-logs -version
 ```
@@ -327,7 +339,7 @@ sudo install -m 0755 新下载的flowd /usr/local/bin/flowd
 sudo systemctl start flowd
 ```
 
-VictoriaLogs 本机二进制换版本时，压缩包名里的版本号要和 `VL_VERSION` 一致，例如 `victoria-logs-linux-amd64-v1.53.0.tar.gz`。
+VictoriaLogs 本机二进制换版本时，压缩包名里的版本号要和 `VL_VERSION` 一致，例如 `victoria-logs-linux-amd64-v1.53.0.tar.gz`。这个地址返回 404 时，用安装一节里的 Docker 镜像拷贝方式取出同一版本的 `victoria-logs-prod`，再执行下面的替换。
 
 ```bash
 sudo systemctl stop victorialogs
