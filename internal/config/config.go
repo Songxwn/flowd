@@ -5,6 +5,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -23,6 +24,27 @@ type Config struct {
 
 type VL struct {
 	URL string `yaml:"url"`
+	ID  Tenant `yaml:"id"`
+}
+
+// Tenant 是 VictoriaLogs 的账号:项目，例如 0:0。
+type Tenant string
+
+func (t *Tenant) UnmarshalYAML(value *yaml.Node) error {
+	if value.Kind != yaml.ScalarNode || value.ShortTag() != "!!str" {
+		return errString("VictoriaLogs ID 需要写成带引号的账号:项目，例如 \"0:0\"")
+	}
+	*t = Tenant(value.Value)
+	return nil
+}
+
+func (t Tenant) MarshalYAML() (any, error) {
+	return &yaml.Node{
+		Kind:  yaml.ScalarNode,
+		Tag:   "!!str",
+		Style: yaml.DoubleQuotedStyle,
+		Value: string(t),
+	}, nil
 }
 
 type Capture struct {
@@ -98,6 +120,9 @@ func (c *Config) applyEnv() {
 	if v := strings.TrimSpace(os.Getenv("FLOWD_VL_URL")); v != "" {
 		c.VictoriaLogs.URL = v
 	}
+	if v := strings.TrimSpace(os.Getenv("FLOWD_VL_ID")); v != "" {
+		c.VictoriaLogs.ID = Tenant(v)
+	}
 	if v := strings.TrimSpace(os.Getenv("FLOWD_IFACES")); v != "" {
 		c.Capture.Ifaces = splitList(v)
 	}
@@ -121,6 +146,9 @@ func (c *Config) Normalize() {
 		c.VictoriaLogs.URL = "http://127.0.0.1:9428"
 	}
 	c.VictoriaLogs.URL = strings.TrimRight(strings.TrimSpace(c.VictoriaLogs.URL), "/")
+	if account, project, err := ParseTenantID(string(c.VictoriaLogs.ID)); err == nil {
+		c.VictoriaLogs.ID = Tenant(account + ":" + project)
+	}
 	if c.Capture.IdleTimeout <= 0 {
 		c.Capture.IdleTimeout = 30 * time.Second
 	}
@@ -174,7 +202,28 @@ func (c Config) Validate() error {
 	if strings.ContainsAny(c.Token, "\r\n; ") || len(c.Token) > 256 {
 		return errString("口令无效")
 	}
+	if _, _, err := ParseTenantID(string(c.VictoriaLogs.ID)); err != nil {
+		return err
+	}
 	return nil
+}
+
+// ParseTenantID 解析 VictoriaLogs 的账号:项目。空字符串按 0:0。
+func ParseTenantID(s string) (account, project string, err error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return "0", "0", nil
+	}
+	left, right, ok := strings.Cut(s, ":")
+	if !ok || left == "" || right == "" || strings.Contains(right, ":") {
+		return "", "", errString("VictoriaLogs ID 应为账号:项目，例如 0:0")
+	}
+	a, err1 := strconv.ParseUint(left, 10, 32)
+	p, err2 := strconv.ParseUint(right, 10, 32)
+	if err1 != nil || err2 != nil {
+		return "", "", errString("VictoriaLogs ID 应为账号:项目，例如 0:0")
+	}
+	return strconv.FormatUint(a, 10), strconv.FormatUint(p, 10), nil
 }
 
 type errString string

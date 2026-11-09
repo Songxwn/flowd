@@ -15,7 +15,7 @@ docker compose up -d
 
 然后在这台机器上打开 <http://127.0.0.1:8787>。到「设置」里勾选网卡并保存，采集马上开始。
 
-`flowd` 使用主机网络，才能看到宿主机网卡；同时使用主机 PID 命名空间，才能把连接对应到宿主机进程。VictoriaLogs 只监听 `127.0.0.1:9428`。镜像是 `ghcr.io/songxwn/flowd`，数据默认保留 30 天。
+`flowd` 使用主机网络，才能看到宿主机网卡；同时使用主机 PID 命名空间，才能把连接对应到宿主机进程。VictoriaLogs 只监听 `127.0.0.1:9428`。镜像是 `ghcr.io/songxwn/flowd`，数据默认保留 30 天。租户默认 `0:0`。要写入别的租户时加上 `FLOWD_VL_ID`，例如 `12:34`。
 
 网页默认只绑定本机。要给别的机器访问时，设置口令并修改监听地址，然后重启容器：
 
@@ -126,6 +126,7 @@ listen: 127.0.0.1:8787
 token: ""
 victorialogs:
   url: http://127.0.0.1:9428
+  id: "0:0"
 capture:
   ifaces: []
   idle_timeout: 30s
@@ -214,10 +215,10 @@ sudo systemctl restart flowd
 环境变量会盖过配置文件里的同名项，适合临时指定：
 
 ```bash
-sudo FLOWD_VL_URL=http://127.0.0.1:9428 /usr/local/bin/flowd -config /etc/flowd/config.yaml
+sudo FLOWD_VL_URL=http://127.0.0.1:9428 FLOWD_VL_ID=0:0 /usr/local/bin/flowd -config /etc/flowd/config.yaml
 ```
 
-`FLOWD_LISTEN`、`FLOWD_TOKEN`、`FLOWD_HOSTNAME` 同样有效。不要设置 `FLOWD_IFACES`，它会在每次启动时盖过网页里保存的网卡。
+`FLOWD_LISTEN`、`FLOWD_TOKEN`、`FLOWD_HOSTNAME` 同样有效。`FLOWD_VL_ID` 是 VictoriaLogs 的租户，格式为 `账号:项目`，默认 `0:0`。写入和查询都会带上对应的 `AccountID` 和 `ProjectID`。网页设置里也可以改，保存后立即生效。不要设置 `FLOWD_IFACES`，它会在每次启动时盖过网页里保存的网卡。
 
 Windows 或 macOS 上的 flowd 不能抓包，只能连到已经在跑的 VictoriaLogs。Linux 上的 `9428` 没有对网卡开放时，用隧道：
 

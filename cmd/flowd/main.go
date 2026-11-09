@@ -48,7 +48,7 @@ func main() {
 		cfg.Hostname = host
 	}
 
-	log.Printf("flowd %s 配置 %s，监听 %s，VictoriaLogs %s", version, path, cfg.Listen, cfg.VictoriaLogs.URL)
+	log.Printf("flowd %s 配置 %s，监听 %s，VictoriaLogs %s 租户 %s", version, path, cfg.Listen, cfg.VictoriaLogs.URL, cfg.VictoriaLogs.ID)
 	if !capture.Supported() {
 		log.Printf("当前系统不能抓包，只能查询已经写入 VictoriaLogs 的日志")
 	}
@@ -57,7 +57,7 @@ func main() {
 	defer stop()
 
 	out := make(chan model.Record, 2048)
-	client := vlogs.New(cfg.VictoriaLogs.URL, version)
+	client := vlogs.New(cfg.VictoriaLogs.URL, string(cfg.VictoriaLogs.ID), version)
 	sink := vlogs.NewSink(client, out)
 	go sink.Run()
 

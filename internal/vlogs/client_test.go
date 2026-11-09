@@ -57,10 +57,13 @@ func TestInsert(t *testing.T) {
 		}
 		b, _ := io.ReadAll(r.Body)
 		got = string(b)
+		if r.Header.Get("AccountID") != "0" || r.Header.Get("ProjectID") != "0" {
+			t.Errorf("tenant %s:%s", r.Header.Get("AccountID"), r.Header.Get("ProjectID"))
+		}
 		w.WriteHeader(204)
 	}))
 	defer srv.Close()
-	c := New(srv.URL, "test")
+	c := New(srv.URL, "", "test")
 	rec := model.Record{Time: time.Unix(10, 0).UTC(), Host: "h", Kind: "dns", Iface: "eth0", Proto: "udp", Domain: "example.com"}
 	rec.Finish()
 	if err := c.Insert(context.Background(), []model.Record{rec}); err != nil {
@@ -68,5 +71,35 @@ func TestInsert(t *testing.T) {
 	}
 	if !strings.Contains(got, `"domain":"example.com"`) || !strings.Contains(got, `"_msg":"dns example.com"`) {
 		t.Fatalf("%s", got)
+	}
+}
+
+func TestTenantHeaders(t *testing.T) {
+	var account, project, path string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		account = r.Header.Get("AccountID")
+		project = r.Header.Get("ProjectID")
+		path = r.URL.Path
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+	c := New(srv.URL, "12:34", "test")
+	rec := model.Record{Time: time.Unix(10, 0).UTC(), Host: "h", Kind: "flow", Iface: "eth0", Proto: "tcp"}
+	rec.Finish()
+	if err := c.Insert(context.Background(), []model.Record{rec}); err != nil {
+		t.Fatal(err)
+	}
+	if account != "12" || project != "34" || !strings.Contains(path, "/insert/") {
+		t.Fatalf("insert %s %s %s", account, project, path)
+	}
+	c.SetID("0:0")
+	if _, err := c.Logs(context.Background(), LogFilter{Kind: "flow"}, time.Unix(1, 0), time.Unix(20, 0)); err != nil {
+		t.Fatal(err)
+	}
+	if account != "0" || project != "0" || !strings.Contains(path, "/select/") {
+		t.Fatalf("query %s %s %s", account, project, path)
+	}
+	if c.ID() != "0:0" {
+		t.Fatalf("id %s", c.ID())
 	}
 }

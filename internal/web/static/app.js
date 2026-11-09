@@ -60,7 +60,7 @@ function paintStatus(st) {
   document.getElementById("hostname").textContent = st.host || "";
   document.getElementById("ver").textContent = st.version || "";
   const vl = document.getElementById("vlstate");
-  vl.textContent = st.vl_ok ? "VictoriaLogs 正常" : "VictoriaLogs 异常";
+  vl.textContent = (st.vl_ok ? "VictoriaLogs 正常" : "VictoriaLogs 异常") + " · " + (st.vl_id || "0:0");
   vl.title = st.vl_error || "";
   vl.className = st.vl_ok ? "pill ok" : "pill bad";
   const banner = document.getElementById("banner");
@@ -247,6 +247,7 @@ function lines(id) {
 function fillForm(cfg) {
   document.getElementById("listen").value = cfg.listen || "";
   document.getElementById("vlurl").value = cfg.vl_url || "";
+  document.getElementById("vlid").value = cfg.vl_id || "0:0";
   document.getElementById("incDom").value = (cfg.include_domains || []).join("\n");
   document.getElementById("excDom").value = (cfg.exclude_domains || []).join("\n");
   document.getElementById("incApp").value = (cfg.include_apps || []).join("\n");
@@ -302,6 +303,7 @@ async function saveConfig(event) {
     body: JSON.stringify({
       listen: document.getElementById("listen").value.trim(),
       vl_url: document.getElementById("vlurl").value.trim(),
+      vl_id: document.getElementById("vlid").value.trim(),
       ifaces: [...document.querySelectorAll("#ifaces input:checked")].map((input) => input.value),
       include_domains: lines("incDom"),
       exclude_domains: lines("excDom"),

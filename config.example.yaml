@@ -3,6 +3,7 @@ listen: 127.0.0.1:8787
 token: ""
 victorialogs:
   url: http://127.0.0.1:9428
+  id: "0:0"
 capture:
   ifaces: []
   idle_timeout: 30s

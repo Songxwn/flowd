@@ -91,11 +91,12 @@
 
       <section id="settings" class="hidden">
         <form id="settingsForm" class="card form">
-          <p class="muted">勾选网卡并保存后立即开始采集。监听地址保存后要重启进程才生效。域名按后缀匹配，<code>example.com</code> 会包含 <code>a.example.com</code>。应用名按不区分大小写的包含匹配。</p>
+          <p class="muted">勾选网卡并保存后立即开始采集。监听地址保存后要重启进程才生效。VictoriaLogs 租户写成账号:项目，默认 0:0，保存后立即用于写入和查询。域名按后缀匹配，<code>example.com</code> 会包含 <code>a.example.com</code>。应用名按不区分大小写的包含匹配。</p>
           <div id="ifaces"></div>
           <div class="formgrid">
             <label>监听地址<input id="listen" autocomplete="off"></label>
             <label>VictoriaLogs<input id="vlurl" autocomplete="off"></label>
+            <label>租户 ID<input id="vlid" autocomplete="off" placeholder="0:0"></label>
             <label>只保留这些域名<textarea id="incDom" placeholder="一行一个，留空表示全部"></textarea></label>
             <label>排除这些域名<textarea id="excDom" placeholder="一行一个"></textarea></label>
             <label>只保留这些应用<textarea id="incApp" placeholder="一行一个，留空表示全部"></textarea></label>

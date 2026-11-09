@@ -12,17 +12,24 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Songxwn/flowd/internal/config"
 	"github.com/Songxwn/flowd/internal/model"
 )
 
 // Client 写入并查询 VictoriaLogs。
 type Client struct {
 	base    atomic.Value
+	tenant  atomic.Value
 	http    *http.Client
 	version string
 }
 
-func New(base, version string) *Client {
+type tenantIDs struct {
+	Account string
+	Project string
+}
+
+func New(base, id, version string) *Client {
 	if version == "" {
 		version = "dev"
 	}
@@ -36,6 +43,7 @@ func New(base, version string) *Client {
 		version: version,
 	}
 	c.SetURL(base)
+	c.SetID(id)
 	return c
 }
 
@@ -48,6 +56,31 @@ func (c *Client) URL() string {
 	return v
 }
 
+func (c *Client) SetID(id string) {
+	account, project, err := config.ParseTenantID(id)
+	if err != nil {
+		account, project = "0", "0"
+	}
+	c.tenant.Store(tenantIDs{Account: account, Project: project})
+}
+
+func (c *Client) ID() string {
+	t, _ := c.tenant.Load().(tenantIDs)
+	if t.Account == "" {
+		return "0:0"
+	}
+	return t.Account + ":" + t.Project
+}
+
+func (c *Client) tenantHeaders(req *http.Request) {
+	t, _ := c.tenant.Load().(tenantIDs)
+	if t.Account == "" {
+		t = tenantIDs{Account: "0", Project: "0"}
+	}
+	req.Header.Set("AccountID", t.Account)
+	req.Header.Set("ProjectID", t.Project)
+}
+
 func (c *Client) Healthy(ctx context.Context) error {
 	u, err := c.url("/health", nil)
 	if err != nil {
@@ -58,6 +91,7 @@ func (c *Client) Healthy(ctx context.Context) error {
 		return err
 	}
 	req.Header.Set("User-Agent", "flowd/"+c.version)
+	c.tenantHeaders(req)
 	res, err := c.http.Do(req)
 	if err != nil {
 		return fmt.Errorf("连接 VictoriaLogs 失败: %w", err)
@@ -97,6 +131,7 @@ func (c *Client) Insert(ctx context.Context, recs []model.Record) error {
 	}
 	req.Header.Set("Content-Type", "application/stream+json")
 	req.Header.Set("User-Agent", "flowd/"+c.version)
+	c.tenantHeaders(req)
 	res, err := c.http.Do(req)
 	if err != nil {
 		return fmt.Errorf("写入 VictoriaLogs 失败: %w", err)
@@ -225,6 +260,7 @@ func (c *Client) post(ctx context.Context, path, query string, extra map[string]
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("User-Agent", "flowd/"+c.version)
+	c.tenantHeaders(req)
 	res, err := c.http.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("查询 VictoriaLogs 失败: %w", err)

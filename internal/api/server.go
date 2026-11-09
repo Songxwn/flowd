@@ -146,6 +146,7 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 		"host":               cfg.Hostname,
 		"listen":             s.bound,
 		"vl_url":             s.logs.URL(),
+		"vl_id":              s.logs.ID(),
 		"vl_ok":              vlErr == "",
 		"vl_error":           vlErr,
 		"inserted":           s.sink.Inserted.Load(),
@@ -224,6 +225,7 @@ func (s *Server) getConfig(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"listen":           cfg.Listen,
 		"vl_url":           cfg.VictoriaLogs.URL,
+		"vl_id":            string(cfg.VictoriaLogs.ID),
 		"ifaces":           cfg.Capture.Ifaces,
 		"include_domains":  cfg.Filter.IncludeDomains,
 		"exclude_domains":  cfg.Filter.ExcludeDomains,
@@ -241,6 +243,7 @@ func (s *Server) putConfig(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Listen          string   `json:"listen"`
 		VLURL           string   `json:"vl_url"`
+		VLID            *string  `json:"vl_id"`
 		Ifaces          []string `json:"ifaces"`
 		IncludeDomains  []string `json:"include_domains"`
 		ExcludeDomains  []string `json:"exclude_domains"`
@@ -262,6 +265,9 @@ func (s *Server) putConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	if strings.TrimSpace(in.VLURL) != "" {
 		cfg.VictoriaLogs.URL = strings.TrimSpace(in.VLURL)
+	}
+	if in.VLID != nil {
+		cfg.VictoriaLogs.ID = config.Tenant(strings.TrimSpace(*in.VLID))
 	}
 	cfg.Capture.Ifaces = in.Ifaces
 	cfg.Filter.IncludeDomains = in.IncludeDomains
@@ -287,6 +293,7 @@ func (s *Server) putConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.logs.SetURL(cfg.VictoriaLogs.URL)
+	s.logs.SetID(string(cfg.VictoriaLogs.ID))
 	s.svc.Update(cfg)
 	s.mu.Lock()
 	s.cfg = cfg
