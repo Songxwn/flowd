@@ -13,6 +13,7 @@ jobs:
         with:
           go-version: "1.26"
           cache: false
+      - run: go mod tidy
       - run: go test ./...
       - name: Build all targets
         run: |
