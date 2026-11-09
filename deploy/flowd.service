@@ -1,6 +1,6 @@
 [Unit]
 Description=flowd 应用层流量日志
-After=network-online.target
+After=network-online.target victorialogs.service
 Wants=network-online.target
 
 [Service]

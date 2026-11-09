@@ -27,15 +27,228 @@ environment:
 
 `FLOWD_IFACES` 如果设了，每次启动都会覆盖网页里保存的网卡列表。
 
-## 下载二进制
+## 用二进制部署
 
-从 [Releases](https://github.com/Songxwn/flowd/releases) 下载对应系统的 `flowd`。Linux 上需要 root，或者给程序 `CAP_NET_RAW` 和 `CAP_NET_ADMIN`。
+下面在同一台 Linux 上安装 VictoriaLogs 和 flowd，并用 systemd 开机自启。版本与 Compose 一致：VictoriaLogs `v1.53.0`，flowd `v0.1.1`。支持 `x86_64` 和 `aarch64`。不要执行 `go build`。
+
+Compose 和这套二进制不要同时占用 `9428`、`8787`。已经用 Compose 时，继续用上一节即可。
+
+### 1. 准备账号和目录
+
+VictoriaLogs 用单独的系统账号写数据。flowd 抓包需要 root，服务单元里已经写成 `User=root`。
 
 ```bash
-sudo ./flowd_v0.1.1_linux_amd64 -config /etc/flowd/config.yaml
+if ! id victorialogs >/dev/null 2>&1; then
+  sudo useradd --system --home-dir /var/lib/victoria-logs --shell /usr/sbin/nologin victorialogs
+fi
+sudo mkdir -p /var/lib/victoria-logs /etc/flowd /usr/local/bin
+sudo chown victorialogs:victorialogs /var/lib/victoria-logs
 ```
 
-配置示例是 `config.example.yaml`。用 systemd 时可以参考 `deploy/flowd.service`。VictoriaLogs 需要另外运行，地址用 `victorialogs.url` 或环境变量 `FLOWD_VL_URL`。
+### 2. 安装 VictoriaLogs
+
+它是单个可执行文件，解压后的名字是 `victoria-logs-prod`。装到固定路径 `/usr/local/bin/victoria-logs`，以后换版本只替换这个文件。数据放在 `/var/lib/victoria-logs`，保留 30 天，只监听本机 `127.0.0.1:9428`。
+
+```bash
+VL_VERSION=v1.53.0
+case "$(uname -m)" in
+  x86_64) ARCH=amd64 ;;
+  aarch64|arm64) ARCH=arm64 ;;
+  *) echo "只支持 amd64 和 arm64"; exit 1 ;;
+esac
+
+tmp=$(mktemp -d)
+curl -fL -o "$tmp/victoria-logs.tar.gz" \
+  "https://github.com/VictoriaMetrics/VictoriaLogs/releases/download/${VL_VERSION}/victoria-logs-linux-${ARCH}-${VL_VERSION}.tar.gz"
+tar -xzf "$tmp/victoria-logs.tar.gz" -C "$tmp"
+sudo install -m 0755 "$tmp/victoria-logs-prod" /usr/local/bin/victoria-logs
+rm -rf "$tmp"
+/usr/local/bin/victoria-logs -version
+```
+
+写入 `/etc/systemd/system/victorialogs.service`（仓库里的副本是 `deploy/victorialogs.service`）：
+
+```ini
+[Unit]
+Description=VictoriaLogs
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=victorialogs
+Group=victorialogs
+ExecStart=/usr/local/bin/victoria-logs -storageDataPath=/var/lib/victoria-logs -retentionPeriod=30d -httpListenAddr=127.0.0.1:9428
+Restart=on-failure
+RestartSec=2
+LimitNOFILE=1048576
+
+[Install]
+WantedBy=multi-user.target
+```
+
+启动并确认健康检查返回成功：
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now victorialogs
+sudo systemctl status victorialogs --no-pager
+curl -fsS http://127.0.0.1:9428/health
+echo
+```
+
+本机浏览器也可以打开 <http://127.0.0.1:9428>，那是 VictoriaLogs 自己的查询页。flowd 的网页在后面的 `8787`。
+
+如果起不来，先看 `sudo journalctl -u victorialogs -n 80 --no-pager`。常见原因是 `9428` 已被占用，或 `/var/lib/victoria-logs` 不属于 `victorialogs`。
+
+### 3. 安装 flowd
+
+```bash
+FLOWD_VERSION=v0.1.1
+case "$(uname -m)" in
+  x86_64) ARCH=amd64 ;;
+  aarch64|arm64) ARCH=arm64 ;;
+  *) echo "只支持 amd64 和 arm64"; exit 1 ;;
+esac
+
+tmp=$(mktemp -d)
+curl -fL -o "$tmp/flowd" \
+  "https://github.com/Songxwn/flowd/releases/download/${FLOWD_VERSION}/flowd_${FLOWD_VERSION}_linux_${ARCH}"
+sudo install -m 0755 "$tmp/flowd" /usr/local/bin/flowd
+rm -rf "$tmp"
+/usr/local/bin/flowd -version
+```
+
+写入 `/etc/flowd/config.yaml`。网卡先留空，等网页里勾选；保存后会写回这个文件。
+
+```yaml
+listen: 127.0.0.1:8787
+token: ""
+victorialogs:
+  url: http://127.0.0.1:9428
+capture:
+  ifaces: []
+  idle_timeout: 30s
+  export_interval: 15s
+proc:
+  enabled: true
+  root: /proc
+  interval: 2s
+filter:
+  include_domains: []
+  exclude_domains: []
+  include_apps: []
+  exclude_apps: []
+```
+
+```bash
+sudo chmod 600 /etc/flowd/config.yaml
+```
+
+写入 `/etc/systemd/system/flowd.service`（仓库里的副本是 `deploy/flowd.service`）。它排在 VictoriaLogs 之后启动：
+
+```ini
+[Unit]
+Description=flowd 应用层流量日志
+After=network-online.target victorialogs.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/flowd -config /etc/flowd/config.yaml
+Restart=on-failure
+RestartSec=2
+User=root
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now flowd
+sudo systemctl status flowd --no-pager
+curl -fsS http://127.0.0.1:8787/api/health
+echo
+```
+
+然后在这台机器上打开 <http://127.0.0.1:8787>，到「设置」里勾选网卡并保存。采集立刻开始，不用再重启。
+
+`curl` 的结果里应有 `"ok": true`。抓包失败时日志里会写需要 root 或 `CAP_NET_RAW`：
+
+```bash
+sudo journalctl -u flowd -n 80 --no-pager
+```
+
+不用 systemd、只想前台看一眼时：
+
+```bash
+sudo /usr/local/bin/flowd -config /etc/flowd/config.yaml
+```
+
+### 4. 确认日志已经写入
+
+选好网卡并产生一些访问后，VictoriaLogs 里应能查到 `kind:="flow"` 或 `kind:="dns"`。在 VictoriaLogs 页面执行：
+
+```text
+kind:="flow"
+```
+
+flowd 总览里的写入计数会增加。计数不增加时，先看 flowd 日志里的 VictoriaLogs 地址是不是 `http://127.0.0.1:9428`，再确认 `systemctl is-active victorialogs` 为 `active`。
+
+### 5. 给别的机器打开网页
+
+VictoriaLogs 继续只监听 `127.0.0.1`。只把 flowd 网页暴露出去，并设置口令。改 `/etc/flowd/config.yaml`：
+
+```yaml
+listen: 0.0.0.0:8787
+token: 换成你自己的口令
+```
+
+```bash
+sudo systemctl restart flowd
+```
+
+防火墙放行 `8787`，不要放行 `9428`。改 `listen` 必须重启进程；改网卡、过滤条件和 VictoriaLogs 地址可以在网页里保存，立即生效。
+
+环境变量会盖过配置文件里的同名项，适合临时指定：
+
+```bash
+sudo FLOWD_VL_URL=http://127.0.0.1:9428 /usr/local/bin/flowd -config /etc/flowd/config.yaml
+```
+
+`FLOWD_LISTEN`、`FLOWD_TOKEN`、`FLOWD_HOSTNAME` 同样有效。不要设置 `FLOWD_IFACES`，它会在每次启动时盖过网页里保存的网卡。
+
+Windows 或 macOS 上的 flowd 不能抓包，只能连到已经在跑的 VictoriaLogs。Linux 上的 `9428` 没有对网卡开放时，用隧道：
+
+```bash
+ssh -L 9428:127.0.0.1:9428 user@那台Linux
+```
+
+本机配置里的 `victorialogs.url` 仍写 `http://127.0.0.1:9428`，然后运行对应系统的 Release 程序。
+
+### 6. 保留期限、磁盘和升级
+
+保留期限由 VictoriaLogs 的 `-retentionPeriod=30d` 决定。要改成 7 天或 90 天，编辑 `victorialogs.service` 里的这个参数，然后：
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart victorialogs
+```
+
+数据在 `/var/lib/victoria-logs`。升级或重装时不要删除这个目录，否则已有日志会丢。
+
+升级时停掉对应服务，换掉 `/usr/local/bin` 里的文件，再启动。flowd 仍从 [Releases](https://github.com/Songxwn/flowd/releases) 下载。VictoriaLogs 换版本时，压缩包名里的版本号要和 `VL_VERSION` 一致，例如 `victoria-logs-linux-amd64-v1.53.0.tar.gz`。
+
+```bash
+sudo systemctl stop flowd
+sudo install -m 0755 新下载的flowd /usr/local/bin/flowd
+sudo systemctl start flowd
+
+sudo systemctl stop victorialogs
+sudo install -m 0755 解压出的victoria-logs-prod /usr/local/bin/victoria-logs
+sudo systemctl start victorialogs
+```
 
 ## 网页
 
