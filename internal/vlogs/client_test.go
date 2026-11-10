@@ -45,6 +45,10 @@ func TestParseRankAndSeries(t *testing.T) {
 	if len(rows) != 2 || rows[0].Key != "b.com" || rows[0].Hits != 8 || rows[1].Bytes != 90 {
 		t.Fatalf("%+v", rows)
 	}
+	sortRank(rows, "bytes")
+	if rows[0].Key != "a.com" || rows[0].Bytes != 90 {
+		t.Fatalf("按流量排序 %+v", rows)
+	}
 	points, err := parseSeries([]byte(`{"status":"success","data":{"resultType":"matrix","result":[
 		{"metric":{"__name__":"hits"},"values":[[1700000060,"4"],[1700000000,"2"]]},
 		{"metric":{"__name__":"total_bytes"},"values":[[1700000000,"10"]]}

@@ -22,9 +22,8 @@
     <aside>
       <div class="brand">flowd</div>
       <button class="nav on" type="button" data-tab="overview">总览</button>
-      <button class="nav" type="button" data-tab="analyze">分析</button>
+      <button class="nav" type="button" data-tab="stats">统计</button>
       <button class="nav" type="button" data-tab="flows">流日志</button>
-      <button class="nav" type="button" data-tab="rank">排行</button>
       <button class="nav" type="button" data-tab="settings">设置</button>
       <div class="aside-foot muted" id="ver"></div>
     </aside>
@@ -48,29 +47,25 @@
 
       <section id="overview">
         <div class="grid" id="cards"></div>
-        <div class="cols">
+        <div class="overview">
           <div class="card" id="chartcard"></div>
-          <div class="card" id="topdomains"></div>
-          <div class="card" id="topapps"></div>
-          <div class="card" id="topports"></div>
-        </div>
-      </section>
-
-      <section id="analyze" class="hidden">
-        <div class="subtabs" id="metric">
-          <button type="button" data-metric="bytes" class="on">按流量</button>
-          <button type="button" data-metric="hits">按连接</button>
-        </div>
-        <p id="analyzesum" class="muted"></p>
-        <div class="viz">
-          <div class="card" id="trend"></div>
-          <div class="card" id="protoshare"></div>
-        </div>
-        <div class="cols boards">
-          <div class="card" id="board-domain"></div>
-          <div class="card" id="board-app"></div>
-          <div class="card" id="board-port"></div>
-          <div class="card" id="board-ip"></div>
+          <div class="card" id="toprank">
+            <div class="rankhead">
+              <h2>排行</h2>
+              <div class="subtabs" id="overviewby">
+                <button type="button" data-by="domain" class="on">域名</button>
+                <button type="button" data-by="app">应用</button>
+                <button type="button" data-by="dst_port">端口</button>
+                <button type="button" data-by="dst_ip">地址</button>
+              </div>
+              <div class="subtabs" id="overviewmetric">
+                <button type="button" data-metric="bytes" class="on">流量</button>
+                <button type="button" data-metric="hits">连接</button>
+              </div>
+              <button id="openstats" type="button">完整排行</button>
+            </div>
+            <div id="overviewrank"></div>
+          </div>
         </div>
       </section>
 
@@ -99,31 +94,48 @@
         <div id="flowtable"></div>
       </section>
 
-      <section id="rank" class="hidden">
-        <div class="subtabs" id="rankby">
-          <button type="button" data-by="domain" class="on">域名</button>
-          <button type="button" data-by="app">应用</button>
-          <button type="button" data-by="dst_ip">目标地址</button>
-          <button type="button" data-by="proto">协议</button>
-          <button type="button" data-by="dst_port">目标端口</button>
-          <button type="button" data-by="src_port">源端口</button>
+      <section id="stats" class="hidden">
+        <div class="toolbar">
+          <div class="subtabs" id="statby">
+            <button type="button" data-by="domain" class="on">域名</button>
+            <button type="button" data-by="app">应用</button>
+            <button type="button" data-by="dst_ip">目标地址</button>
+            <button type="button" data-by="proto">协议</button>
+            <button type="button" data-by="dst_port">目标端口</button>
+            <button type="button" data-by="src_port">源端口</button>
+          </div>
+          <div class="filters">
+            <div class="subtabs" id="statmetric">
+              <button type="button" data-metric="bytes" class="on">按流量</button>
+              <button type="button" data-metric="hits">按连接</button>
+            </div>
+            <div class="subtabs" id="statkind">
+              <button type="button" data-kind="flow" class="on">连接</button>
+              <button type="button" data-kind="dns">DNS</button>
+            </div>
+            <select id="s-proto">
+              <option value="">全部协议</option>
+              <option value="tcp">tcp</option>
+              <option value="udp">udp</option>
+              <option value="icmp">icmp</option>
+            </select>
+            <input id="s-port" inputmode="numeric" placeholder="端口，源或目标">
+            <select id="s-limit">
+              <option value="10">前 10</option>
+              <option value="20" selected>前 20</option>
+              <option value="50">前 50</option>
+            </select>
+            <input id="statq" placeholder="在当前榜里查找">
+          </div>
         </div>
-        <div class="subtabs" id="rankkind">
-          <button type="button" data-kind="flow" class="on">按连接</button>
-          <button type="button" data-kind="dns">按 DNS</button>
+        <p id="statsum" class="muted"></p>
+        <div class="statlayout">
+          <div class="card" id="stattable"></div>
+          <div class="stataside">
+            <div class="card" id="stattrend"></div>
+            <div class="card" id="statshare"></div>
+          </div>
         </div>
-        <form id="rankform" class="filters">
-          <select id="r-proto">
-            <option value="">全部协议</option>
-            <option value="tcp">tcp</option>
-            <option value="udp">udp</option>
-            <option value="icmp">icmp</option>
-          </select>
-          <input id="r-port" inputmode="numeric" placeholder="端口，源或目标">
-          <button class="primary" type="submit">分析</button>
-        </form>
-        <p id="ranksum" class="muted"></p>
-        <div class="card" id="rankbody"></div>
       </section>
 
       <section id="settings" class="hidden">

@@ -216,13 +216,21 @@ func parseRank(body []byte, field string) ([]RankRow, error) {
 	for _, key := range order {
 		rows = append(rows, *grouped[key])
 	}
+	sortRank(rows, "hits")
+	return rows, nil
+}
+
+func sortRank(rows []RankRow, by string) {
 	sort.Slice(rows, func(i, j int) bool {
-		if rows[i].Hits == rows[j].Hits {
+		left, right := rows[i].Hits, rows[j].Hits
+		if by == "bytes" {
+			left, right = rows[i].Bytes, rows[j].Bytes
+		}
+		if left == right {
 			return rows[i].Key < rows[j].Key
 		}
-		return rows[i].Hits > rows[j].Hits
+		return left > right
 	})
-	return rows, nil
 }
 
 func parseTotals(body []byte) (hits, bytes float64, err error) {

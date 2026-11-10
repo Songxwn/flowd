@@ -32,7 +32,7 @@ docker compose logs flowd
 
 ## 用二进制部署
 
-flowd 装成本机程序，用 systemd 开机自启。VictoriaLogs 二选一：本机二进制，或者只用 Docker 跑 VictoriaLogs。版本与上面的 Compose 一致：VictoriaLogs `v1.53.0`，flowd `v0.1.7`。flowd 支持 `x86_64` 和 `aarch64`。不要执行 `go build`。
+flowd 装成本机程序，用 systemd 开机自启。VictoriaLogs 二选一：本机二进制，或者只用 Docker 跑 VictoriaLogs。版本与上面的 Compose 一致：VictoriaLogs `v1.53.0`，flowd `v0.1.8`。flowd 支持 `x86_64` 和 `aarch64`。不要执行 `go build`。
 
 整套 Compose 和这套二进制不要同时占用 `9428`、`8787`。已经用上一节的 Compose 时，不用再往下做。VictoriaLogs 的两种装法也不要一起占用 `9428`。
 
@@ -185,7 +185,7 @@ sudo docker run -d --name victorialogs --restart unless-stopped \
 ### 3. 安装 flowd
 
 ```bash
-FLOWD_VERSION=v0.1.7
+FLOWD_VERSION=v0.1.8
 case "$(uname -m)" in
   x86_64) ARCH=amd64 ;;
   aarch64|arm64) ARCH=arm64 ;;

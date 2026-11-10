@@ -1,5 +1,6 @@
-const state = { tab: "overview", range: "1h", rankBy: "domain", rankKind: "flow", metric: "bytes", settingsLoaded: false };
-let analyzeCache = null;
+const state = { tab: "overview", range: "1h", rankBy: "domain", rankKind: "flow", metric: "bytes", overviewBy: "domain", settingsLoaded: false };
+let statsCache = null;
+const dimName = { domain: "域名", app: "应用", dst_ip: "目标地址", proto: "协议", dst_port: "目标端口", src_port: "源端口" };
 let busy = false;
 
 function el(tag, attrs, text) {
@@ -243,7 +244,7 @@ function donut(rows, metric) {
     title.textContent = row.key + " " + fmtMetric(metricValue(row, metric), metric);
     circle.appendChild(title);
     circle.style.cursor = "pointer";
-    circle.addEventListener("click", () => openFilter("proto", row.key, "flow"));
+    circle.addEventListener("click", () => openFilter("proto", row.key, state.rankKind));
     svg.appendChild(circle);
     offset += frac * circ;
   });
@@ -256,7 +257,7 @@ function donut(rows, metric) {
     left.appendChild(el("span", { class: "swatch" }));
     left.lastChild.style.background = seriesColor(row.key, index);
     left.appendChild(document.createTextNode(" " + row.key));
-    left.addEventListener("click", () => openFilter("proto", row.key, "flow"));
+    left.addEventListener("click", () => openFilter("proto", row.key, state.rankKind));
     line.appendChild(left);
     line.appendChild(el("span", null, Math.round(100 * metricValue(row, metric) / total) + "% · " + fmtMetric(metricValue(row, metric), metric)));
     box.appendChild(line);
@@ -264,54 +265,111 @@ function donut(rows, metric) {
   return box;
 }
 
-function compareBars(title, rows, field, metric) {
-  const box = el("div");
-  box.appendChild(el("h2", null, title));
-  const list = rows || [];
-  if (!list.length) {
-    box.appendChild(el("p", { class: "muted" }, "没有数据"));
-    return box;
-  }
-  const max = Math.max(...list.map((row) => metricValue(row, metric)), 1);
-  for (const row of list) {
-    const line = el("div", { class: "rowline" });
-    const button = el("button", { class: "link", type: "button" }, row.key);
-    button.addEventListener("click", () => openFilter(field, row.key, "flow"));
-    line.appendChild(button);
-    line.appendChild(el("span", { class: "tag" }, fmtMetric(metricValue(row, metric), metric)));
-    const bar = el("div", { class: "bar" });
-    const span = document.createElement("span");
-    span.style.width = Math.max(2, (metricValue(row, metric) / max) * 100) + "%";
-    bar.appendChild(span);
-    box.appendChild(line);
-    box.appendChild(bar);
-  }
-  return box;
+function activeMetric(row) {
+  return state.metric === "hits" ? Number(row.hits) || 0 : Number(row.bytes) || 0;
 }
 
-function rankList(title, rows, field, kind) {
+function sortParam() {
+  return state.metric === "hits" ? "hits" : "bytes";
+}
+
+function shareText(value, total) {
+  if (!total) return "0%";
+  const pct = (100 * value) / total;
+  if (pct > 0 && pct < 0.1) return "<0.1%";
+  return (pct >= 10 ? pct.toFixed(0) : pct.toFixed(1)) + "%";
+}
+
+function setMetric(metric) {
+  state.metric = metric === "hits" ? "hits" : "bytes";
+  document.querySelectorAll("[data-metric]").forEach((button) => {
+    button.classList.toggle("on", button.dataset.metric === state.metric);
+  });
+  if (state.tab === "stats" || state.tab === "overview") refresh();
+}
+
+function previewList(rows, field, kind) {
   const box = el("div");
-  box.appendChild(el("h2", null, title));
   if (!rows.length) {
     box.appendChild(el("p", { class: "muted" }, "没有数据"));
     return box;
   }
-  const max = Math.max(...rows.map((row) => Number(row.hits) || 0), 1);
-  for (const row of rows) {
+  const max = Math.max(...rows.map(activeMetric), 1);
+  rows.forEach((row, index) => {
     const line = el("div", { class: "rowline" });
-    const button = el("button", { class: "link", type: "button" }, row.key);
+    const button = el("button", { class: "link", type: "button" }, (index + 1) + "  " + row.key);
     button.addEventListener("click", () => openFilter(field, row.key, kind));
     line.appendChild(button);
-    line.appendChild(el("span", { class: "mono" }, String(Math.round(Number(row.hits) || 0))));
-    line.appendChild(el("span", { class: "tag" }, fmtBytes(row.bytes)));
+    line.appendChild(el("span", { class: "tag" }, fmtMetric(activeMetric(row), state.metric)));
+    line.appendChild(el("span", { class: "mono" }, state.metric === "bytes" ? String(Math.round(Number(row.hits) || 0)) : fmtBytes(row.bytes)));
     const bar = el("div", { class: "bar" });
     const span = document.createElement("span");
-    span.style.width = Math.max(2, ((Number(row.hits) || 0) / max) * 100) + "%";
+    span.style.width = Math.max(2, (activeMetric(row) / max) * 100) + "%";
     bar.appendChild(span);
     box.appendChild(line);
     box.appendChild(bar);
-  }
+  });
   return box;
+}
+
+function rankTable(rows, field, kind, totals) {
+  const wrap = el("div");
+  wrap.appendChild(el("h2", null, (dimName[field] || "排行") + (kind === "dns" ? " · DNS" : "")));
+  if (!rows.length) {
+    wrap.appendChild(el("p", { class: "muted" }, "没有数据"));
+    return wrap;
+  }
+  const table = el("table", { class: "rank" });
+  const head = document.createElement("tr");
+  head.appendChild(el("th", { class: "rankn" }, "#"));
+  head.appendChild(el("th", null, dimName[field] || "名称"));
+  for (const [label, key] of [["流量", "bytes"], ["占比", ""], ["连接", "hits"]]) {
+    const th = el("th", { class: "num" + (key ? " sort" : "") }, label);
+    if (key) {
+      th.classList.toggle("on", state.metric === key);
+      th.addEventListener("click", () => setMetric(key));
+    }
+    head.appendChild(th);
+  }
+  const thead = document.createElement("thead");
+  thead.appendChild(head);
+  table.appendChild(thead);
+  const body = document.createElement("tbody");
+  const total = state.metric === "hits" ? Number(totals.hits) || 0 : Number(totals.bytes) || 0;
+  const max = Math.max(...rows.map(activeMetric), 1);
+  const q = (document.getElementById("statq").value || "").trim().toLowerCase();
+  let shown = 0;
+  rows.forEach((row, index) => {
+    if (q && !String(row.key).toLowerCase().includes(q)) return;
+    shown += 1;
+    const tr = document.createElement("tr");
+    tr.appendChild(el("td", { class: "rankn" }, String(index + 1)));
+    const name = document.createElement("td");
+    const button = el("button", { class: "link", type: "button" }, row.key);
+    button.addEventListener("click", () => openFilter(field, row.key, kind));
+    name.appendChild(button);
+    const meter = el("div", { class: "meter" });
+    const span = document.createElement("span");
+    span.style.width = Math.max(2, (activeMetric(row) / max) * 100) + "%";
+    meter.appendChild(span);
+    name.appendChild(meter);
+    tr.appendChild(name);
+    const bytes = el("td", { class: "num" }, fmtBytes(row.bytes));
+    const hits = el("td", { class: "num" }, String(Math.round(Number(row.hits) || 0)));
+    if (state.metric === "bytes") bytes.style.color = "var(--accent)";
+    else hits.style.color = "var(--accent)";
+    tr.appendChild(bytes);
+    tr.appendChild(el("td", { class: "num" }, shareText(activeMetric(row), total)));
+    tr.appendChild(hits);
+    body.appendChild(tr);
+  });
+  if (!shown) {
+    wrap.appendChild(el("p", { class: "muted" }, "当前榜里没有匹配的项。"));
+    return wrap;
+  }
+  table.appendChild(body);
+  wrap.appendChild(table);
+  return wrap;
 }
 
 function openFilter(field, key, kind) {
@@ -366,67 +424,86 @@ async function loadOverview() {
     card("跟踪中的连接", st.tracked),
   );
   let series = { points: [] };
-  let domains = { rows: [] };
-  let apps = { rows: [] };
-  let ports = { rows: [] };
+  let ranked = { rows: [] };
   try {
-    [series, domains, apps, ports] = await Promise.all([
+    [series, ranked] = await Promise.all([
       api("/api/series?range=" + state.range),
-      api("/api/rank?by=domain&kind=flow&range=" + state.range + "&limit=8"),
-      api("/api/rank?by=app&kind=flow&range=" + state.range + "&limit=8"),
-      api("/api/rank?by=dst_port&kind=flow&range=" + state.range + "&limit=8"),
+      api("/api/rank?by=" + encodeURIComponent(state.overviewBy) + "&kind=flow&range=" + state.range + "&limit=8&sort=" + sortParam()),
     ]);
   } catch (err) {
     onErr(err);
   }
   document.getElementById("chartcard").replaceChildren(el("h2", null, "连接与流量"), chart(series.points || []));
-  document.getElementById("topdomains").replaceChildren(rankList("域名", domains.rows || [], "domain", "flow"));
-  document.getElementById("topapps").replaceChildren(rankList("应用", apps.rows || [], "app", "flow"));
-  document.getElementById("topports").replaceChildren(rankList("目标端口", ports.rows || [], "dst_port", "flow"));
+  document.getElementById("overviewrank").replaceChildren(previewList(ranked.rows || [], state.overviewBy, "flow"));
 }
 
-async function loadAnalyze() {
-  const range = "range=" + encodeURIComponent(state.range);
-  const [st, series, protos, domains, apps, ports, ips] = await Promise.all([
+async function loadStats() {
+  const params = new URLSearchParams();
+  params.set("range", state.range);
+  params.set("kind", state.rankKind);
+  const proto = document.getElementById("s-proto").value;
+  const port = document.getElementById("s-port").value.trim();
+  if (proto) params.set("proto", proto);
+  if (port) params.set("port", port);
+  const rankParams = new URLSearchParams(params);
+  rankParams.set("by", state.rankBy);
+  rankParams.set("sort", sortParam());
+  rankParams.set("limit", document.getElementById("s-limit").value || "20");
+  const seriesParams = new URLSearchParams(params);
+  seriesParams.set("by", "proto");
+  const jobs = [
     api("/api/status"),
-    api("/api/series?" + range + "&kind=flow&by=proto"),
-    api("/api/rank?by=proto&kind=flow&" + range + "&limit=6"),
-    api("/api/rank?by=domain&kind=flow&" + range + "&limit=8"),
-    api("/api/rank?by=app&kind=flow&" + range + "&limit=8"),
-    api("/api/rank?by=dst_port&kind=flow&" + range + "&limit=8"),
-    api("/api/rank?by=dst_ip&kind=flow&" + range + "&limit=8"),
-  ]);
-  paintStatus(st);
-  analyzeCache = { series: series.series || [], protos, domains, apps, ports, ips };
-  paintAnalyze();
+    api("/api/rank?" + rankParams.toString()),
+    api("/api/series?" + seriesParams.toString()),
+  ];
+  if (state.rankBy !== "proto") {
+    const protoRank = new URLSearchParams(params);
+    protoRank.set("by", "proto");
+    protoRank.set("sort", sortParam());
+    protoRank.set("limit", "6");
+    jobs.push(api("/api/rank?" + protoRank.toString()));
+  }
+  const result = await Promise.all(jobs);
+  paintStatus(result[0]);
+  statsCache = {
+    rows: result[1].rows || [],
+    hits: result[1].hits,
+    bytes: result[1].bytes,
+    series: result[2].series || [],
+    protos: state.rankBy === "proto" ? result[1] : result[3],
+  };
+  paintStats();
 }
 
-function paintAnalyze() {
-  const data = analyzeCache;
+function paintStats() {
+  const data = statsCache;
   if (!data) return;
   const metric = state.metric === "hits" ? "hits" : "bytes";
-  const trend = document.getElementById("trend");
+  document.getElementById("statsum").textContent = "当前范围 " + Math.round(Number(data.hits) || 0) + " 条，流量 " + fmtBytes(data.bytes) + "。点击名称打开日志，点击表头切换排序。占比相对整个范围。";
+  document.getElementById("stattable").replaceChildren(rankTable(data.rows, state.rankBy, state.rankKind, data));
+  const trend = document.getElementById("stattrend");
   trend.replaceChildren(el("h2", null, metric === "bytes" ? "流量趋势" : "连接趋势"));
-  const legend = el("div", { class: "legend" });
   const drawn = (data.series || []).filter((item) => item.name && item.name !== "all");
+  const legend = el("div", { class: "legend" });
   drawn.forEach((item, index) => {
     const button = el("button", { type: "button" });
     button.appendChild(el("span", { class: "swatch" }));
     button.lastChild.style.background = seriesColor(item.name, index);
     button.appendChild(document.createTextNode(item.name));
-    button.addEventListener("click", () => openFilter("proto", item.name, "flow"));
+    button.addEventListener("click", () => openFilter("proto", item.name, state.rankKind));
     legend.appendChild(button);
   });
   trend.appendChild(trendChart(drawn.length ? drawn : [{ name: "all", points: (data.series[0] && data.series[0].points) || [] }], metric, { tall: true }));
   if (drawn.length) trend.appendChild(legend);
-  const share = document.getElementById("protoshare");
+  const share = document.getElementById("statshare");
+  if (state.rankBy === "proto") {
+    share.classList.add("hidden");
+    share.replaceChildren();
+    return;
+  }
+  share.classList.remove("hidden");
   share.replaceChildren(el("h2", null, "协议占比"));
-  share.appendChild(donut(data.protos.rows || [], metric));
-  document.getElementById("analyzesum").textContent = "当前范围 " + Math.round(Number(data.protos.hits) || 0) + " 条连接，流量 " + fmtBytes(data.protos.bytes);
-  document.getElementById("board-domain").replaceChildren(compareBars("域名", data.domains.rows || [], "domain", metric));
-  document.getElementById("board-app").replaceChildren(compareBars("应用", data.apps.rows || [], "app", metric));
-  document.getElementById("board-port").replaceChildren(compareBars("目标端口", data.ports.rows || [], "dst_port", metric));
-  document.getElementById("board-ip").replaceChildren(compareBars("目标地址", data.ips.rows || [], "dst_ip", metric));
+  share.appendChild(donut((data.protos && data.protos.rows) || [], metric));
 }
 
 async function loadFlows() {
@@ -455,28 +532,6 @@ async function loadFlows() {
     return;
   }
   box.appendChild(flowTable(data.logs));
-}
-
-function rankTitle() {
-  const name = { domain: "域名", app: "应用", dst_ip: "目标地址", proto: "协议", dst_port: "目标端口", src_port: "源端口" }[state.rankBy] || "排行";
-  return name + (state.rankKind === "dns" ? " · DNS" : " · 连接");
-}
-
-async function loadRank() {
-  const params = new URLSearchParams();
-  params.set("by", state.rankBy);
-  params.set("kind", state.rankKind);
-  params.set("range", state.range);
-  params.set("limit", "30");
-  const proto = document.getElementById("r-proto").value;
-  const port = document.getElementById("r-port").value.trim();
-  if (proto) params.set("proto", proto);
-  if (port) params.set("port", port);
-  const [st, data] = await Promise.all([api("/api/status"), api("/api/rank?" + params.toString())]);
-  paintStatus(st);
-  const sum = document.getElementById("ranksum");
-  sum.textContent = "当前范围 " + Math.round(Number(data.hits) || 0) + " 条，流量 " + fmtBytes(data.bytes);
-  document.getElementById("rankbody").replaceChildren(rankList(rankTitle(), data.rows || [], state.rankBy, state.rankKind));
 }
 
 function lines(id) {
@@ -571,9 +626,8 @@ async function refresh() {
   busy = true;
   try {
     if (state.tab === "overview") await loadOverview();
-    else if (state.tab === "analyze") await loadAnalyze();
+    else if (state.tab === "stats") await loadStats();
     else if (state.tab === "flows") await loadFlows();
-    else if (state.tab === "rank") await loadRank();
     else await loadSettings();
   } catch (err) {
     onErr(err);
@@ -584,7 +638,7 @@ async function refresh() {
 
 function show(tab) {
   state.tab = tab;
-  for (const name of ["overview", "analyze", "flows", "rank", "settings"]) {
+  for (const name of ["overview", "stats", "flows", "settings"]) {
     document.getElementById(name).classList.toggle("hidden", name !== tab);
   }
   document.querySelectorAll("button.nav").forEach((button) => {
@@ -609,30 +663,59 @@ document.getElementById("ranges").addEventListener("click", (event) => {
   mark("ranges", "range", state.range);
   refresh();
 });
-document.getElementById("metric").addEventListener("click", (event) => {
+document.getElementById("overviewby").addEventListener("click", (event) => {
   const button = event.target.closest("button");
   if (!button) return;
-  state.metric = button.dataset.metric;
-  mark("metric", "metric", state.metric);
-  if (analyzeCache) paintAnalyze();
+  state.overviewBy = button.dataset.by;
+  mark("overviewby", "by", state.overviewBy);
+  if (state.tab === "overview") refresh();
 });
-document.getElementById("rankby").addEventListener("click", (event) => {
+document.getElementById("overviewmetric").addEventListener("click", (event) => {
+  const button = event.target.closest("button");
+  if (!button) return;
+  setMetric(button.dataset.metric);
+});
+document.getElementById("statmetric").addEventListener("click", (event) => {
+  const button = event.target.closest("button");
+  if (!button) return;
+  setMetric(button.dataset.metric);
+});
+document.getElementById("statby").addEventListener("click", (event) => {
   const button = event.target.closest("button");
   if (!button) return;
   state.rankBy = button.dataset.by;
-  mark("rankby", "by", state.rankBy);
-  if (state.tab === "rank") refresh();
+  mark("statby", "by", state.rankBy);
+  if (state.tab === "stats") refresh();
 });
-document.getElementById("rankkind").addEventListener("click", (event) => {
+document.getElementById("statkind").addEventListener("click", (event) => {
   const button = event.target.closest("button");
   if (!button) return;
   state.rankKind = button.dataset.kind;
-  mark("rankkind", "kind", state.rankKind);
-  if (state.tab === "rank") refresh();
+  mark("statkind", "kind", state.rankKind);
+  if (state.tab === "stats") refresh();
 });
-document.getElementById("rankform").addEventListener("submit", (event) => {
-  event.preventDefault();
-  loadRank().catch(onErr);
+document.getElementById("s-proto").addEventListener("change", () => {
+  if (state.tab === "stats") refresh();
+});
+document.getElementById("s-limit").addEventListener("change", () => {
+  if (state.tab === "stats") refresh();
+});
+document.getElementById("s-port").addEventListener("change", () => {
+  if (state.tab === "stats") refresh();
+});
+document.getElementById("s-port").addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    if (state.tab === "stats") refresh();
+  }
+});
+document.getElementById("statq").addEventListener("input", () => {
+  if (statsCache) paintStats();
+});
+document.getElementById("openstats").addEventListener("click", () => {
+  state.rankBy = state.overviewBy;
+  mark("statby", "by", state.rankBy);
+  show("stats");
 });
 document.getElementById("flowform").addEventListener("submit", (event) => {
   event.preventDefault();

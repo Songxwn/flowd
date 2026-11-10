@@ -200,7 +200,7 @@ func (c *Client) Logs(ctx context.Context, f LogFilter, start, end time.Time) ([
 	return out, nil
 }
 
-func (c *Client) Rank(ctx context.Context, kind, field, proto, port string, start, end time.Time, limit int) ([]RankRow, error) {
+func (c *Client) Rank(ctx context.Context, kind, field, proto, port, sortBy string, start, end time.Time, limit int) ([]RankRow, error) {
 	q, err := rankQuery(kind, field, proto, port)
 	if err != nil {
 		return nil, err
@@ -213,6 +213,7 @@ func (c *Client) Rank(ctx context.Context, kind, field, proto, port string, star
 	if err != nil {
 		return nil, err
 	}
+	sortRank(rows, sortBy)
 	if limit <= 0 || limit > 100 {
 		limit = 20
 	}

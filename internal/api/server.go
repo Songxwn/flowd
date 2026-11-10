@@ -385,7 +385,7 @@ func (s *Server) rank(w http.ResponseWriter, r *http.Request) {
 	kind := r.URL.Query().Get("kind")
 	proto := r.URL.Query().Get("proto")
 	port := r.URL.Query().Get("port")
-	rows, err := s.logs.Rank(ctx, kind, r.URL.Query().Get("by"), proto, port, start, end, limit)
+	rows, err := s.logs.Rank(ctx, kind, r.URL.Query().Get("by"), proto, port, r.URL.Query().Get("sort"), start, end, limit)
 	if err != nil {
 		code := http.StatusBadGateway
 		if strings.Contains(err.Error(), "不支持") {
